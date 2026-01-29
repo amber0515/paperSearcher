@@ -13,3 +13,41 @@ b {
 span {
     cursor: pointer;
 }
+
+/* 筛选器区域 */
+.filter-section {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+.filter-group {
+    padding: 10px 0;
+}
+
+.filter-group:last-child {
+    padding-bottom: 0;
+}
+
+/* 复选框样式 */
+.form-check-inline {
+    margin-right: 15px;
+    margin-bottom: 8px;
+}
+
+.form-check-label {
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* 筛选器按钮 */
+.filter-section .btn {
+    font-size: 0.9rem;
+}
+
+/* 复选框选中状态 */
+input[type="checkbox"]:checked + label {
+    color: #007bff;
+    font-weight: 600;
+}

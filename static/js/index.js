@@ -65,15 +65,35 @@ $(function (){
         // 去掉table的隐藏
         $("#table").removeAttr("hidden");
 
-        // 拼接搜索链接
+        // 获取搜索关键词
         const query = $("#keyword").val();
-        const req_rul  = "./search?q=" + encodeURIComponent(query)
+
+        // 获取选中的会议
+        const selectedConfs = [];
+        $('input[name="conf"]:checked').each(function() {
+            selectedConfs.push($(this).val());
+        });
+
+        // 获取选中的年份
+        const selectedYears = [];
+        $('input[name="year"]:checked').each(function() {
+            selectedYears.push($(this).val());
+        });
+
+        // 构建搜索 URL
+        let req_url = "./search?q=" + encodeURIComponent(query);
+        if (selectedConfs.length > 0) {
+            req_url += "&s=" + selectedConfs.join(',');
+        }
+        if (selectedYears.length > 0) {
+            req_url += "&y=" + selectedYears.join(',');
+        }
 
         // 先destroy，再重建表格对象
         $table.bootstrapTable('destroy');
         $table.bootstrapTable({
             sidePagination : 'server',
-            url: req_rul,
+            url: req_url,
             // 设置加载完成的绑定事件，否则tooltip不工作
             onLoadSuccess: function (data) {
                 $('[data-toggle="tooltip"]').tooltip()
@@ -87,7 +107,52 @@ $(function (){
             }
         })
     })
+
+    // 全选/清除 - 会议
+    $('.conf-select-all').click(function() {
+        $('input[name="conf"]').prop('checked', true);
+    });
+    $('.conf-clear').click(function() {
+        $('input[name="conf"]').prop('checked', false);
+    });
+
+    // 全选/清除 - 年份
+    $('.year-select-all').click(function() {
+        $('input[name="year"]').prop('checked', true);
+    });
+    $('.year-clear').click(function() {
+        $('input[name="year"]').prop('checked', false);
+    });
 })
+
+// 页面加载时动态生成筛选器
+$(document).ready(function() {
+    // 生成会议复选框（基于 source_pool）
+    const confContainer = $('.conf-checkboxes');
+    for (const [key, value] of Object.entries(source_pool)) {
+        confContainer.append(`
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox"
+                       value="${key}" id="conf-${key}" name="conf">
+                <label class="form-check-label" for="conf-${key}" title="${value}">
+                    ${key.toUpperCase()}
+                </label>
+            </div>
+        `);
+    }
+
+    // 生成年份复选框（2016-2025，降序）
+    const yearContainer = $('.year-checkboxes');
+    for (let y = 2025; y >= 2016; y--) {
+        yearContainer.append(`
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox"
+                       value="${y}" id="year-${y}" name="year">
+                <label class="form-check-label" for="year-${y}">${y}</label>
+            </div>
+        `);
+    }
+});
 
 function operateFormatter(value, row, index) {
     // 拼接工具栏

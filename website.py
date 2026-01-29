@@ -2,6 +2,7 @@
 # 功能：提供论文搜索 API，支持关键词、会议、年份筛选
 
 import sys
+import re
 from flask import Flask, request, jsonify
 import sqlite3
 import json
@@ -10,153 +11,113 @@ app = Flask(__name__)
 
 
 # =============================================================================
-# SQL 注入"防护"函数（存在安全隐患，仅作注释说明）
+# 关键词解析函数（只解析，不构建 SQL）
 # =============================================================================
-def sqlinjection(keyword):
+def parse_keywords(q):
     """
-    尝试转义特殊字符以防止 SQL 注入
-    ⚠️ 警告：这种方式无法真正防止 SQL 注入！
-
-    原理：在 SQL 中，单引号 ' 用于界定字符串。通过将 ' 替换为 ''（两个单引号），
-    SQL 会将其视为字符串内的单引号而非字符串结束符。
-
-    问题：
-    1. 只处理了部分特殊字符，还有其他绕过方式
-    2. 使用字符串拼接构建 SQL，即使转义也可能被绕过
-    3. 正确做法应使用参数化查询（prepared statements）
-
-    Args:
-        keyword: 用户输入的关键词
-
-    Returns:
-        转义后的字符串
-    """
-    if keyword:
-        keyword = keyword.replace("/", "//")
-        keyword = keyword.replace("'", "''")   # 单引号转义为双单引号
-        keyword = keyword.replace("[", "/[")
-        keyword = keyword.replace("]", "/]")
-        keyword = keyword.replace("%", "/%")   # % 是 LIKE 通配符
-        keyword = keyword.replace("&", "/&")
-        keyword = keyword.replace("_", "/_")   # _ 是 LIKE 单字符通配符
-        keyword = keyword.replace("(", "/(")
-        keyword = keyword.replace(")", "/)")
-    return keyword
-
-
-# =============================================================================
-# 关键词解析与 SQL 查询构建函数（核心搜索逻辑）
-# =============================================================================
-def keywords(q, source, year, page):
-    """
-    解析用户搜索关键词，构建 SQL WHERE 子句
+    解析搜索关键词，返回 (关键词列表, 运算符列表)
 
     搜索语法：
     - 使用 + 分隔表示 AND（两个关键词都必须存在）
     - 使用 | 分隔表示 OR（任一关键词存在即可）
     - 示例：
-      - "blockchain+security" → title 包含 "blockchain" AND "security"
-      - "security|iot"        → title 包含 "security" OR "iot"
-
-    构建的 SQL 结构：
-    1. 先在 title 中搜索：(title LIKE '%kw1%' AND/OR title LIKE '%kw2%')
-    2. 再在 abstract 中搜索：(abstract LIKE '%kw1%' AND/OR abstract LIKE '%kw2%')
-    3. 两者用 OR 连接
-    4. 最后添加可选的 conference 和 year 筛选
+      - "blockchain+security" → (["blockchain", "security"], ["and"])
+      - "security|iot"        → (["security", "iot"], ["or"])
 
     Args:
         q: 用户输入的搜索关键词字符串
-        source: 会议筛选条件（如 "ccs,sp,uss"）
-        year: 年份筛选条件（如 "2022,2023"）
-        page: 未使用的参数
 
     Returns:
-        SQL WHERE 子句字符串（不含 "WHERE" 关键字本身）
-
-    示例返回：
-        输入: q="ai+security", source="ccs", year="2022"
-        返回: "(title LIKE '%ai%' AND title LIKE '%security%') OR (abstract LIKE '%ai%' AND abstract LIKE '%security%') AND conference IN (ccs) AND year IN (2022)"
+        (keywords, operators): 关键词列表和运算符列表
     """
-    tmp = []          # 临时存储字符
-    keywords = []     # 存储解析出的关键词
-    operator = []     # 存储运算符（and/or）
+    keywords = []
+    operator = []
+    tmp = []
 
-    # 对 source 和 year 进行"转义"处理
-    source = sqlinjection(source)
-    year = sqlinjection(year)
-
-    # ========== 第一步：解析关键词和运算符 ==========
     i = 0
     finish_flag = False
     while i <= len(q):
         if i == len(q):
-            # 到达字符串末尾，完成当前关键词
             finish_flag = True
         elif q[i] == "+":
-            # 遇到 + ，表示 AND 运算
             operator.append("and")
             finish_flag = True
         elif q[i] == "|":
-            # 遇到 | ，表示 OR 运算
             operator.append("or")
             finish_flag = True
         else:
-            # 普通字符，添加到临时数组
             tmp.append(q[i])
 
         if finish_flag:
-            # 将临时字符组合成关键词
             tmp_str = "".join(tmp).strip()
             if tmp_str:
-                keywords.append(sqlinjection("".join(tmp).strip()))
-            tmp = []           # 重置临时数组
+                keywords.append(tmp_str)
+            tmp = []
             finish_flag = False
         i += 1
 
-    # 验证：关键词数量应该比运算符多 1
-    # 例如：3 个关键词需要 2 个运算符连接
-    if len(keywords) - len(operator) != 1:
-        print("Error")
+    return keywords, operator
 
-    # ========== 第二步：构建 SQL WHERE 子句 ==========
-    base_query = "("
-    clause = ""
 
-    # LIKE 查询模板
-    base_title = "title LIKE '%{0}%'"
-    base_abstract = "abstract LIKE '%{0}%'"
+# =============================================================================
+# 构建参数化查询函数
+# =============================================================================
+def build_search_query(keywords, operators, source_list=None, year_list=None):
+    """
+    构建参数化查询的 SQL 模板和参数列表
 
-    # --- 构建 title 部分的查询条件 ---
-    for i in range(len(operator)):
-        try:
-            clause += base_title.format(keywords[i])
-            clause += " {0} ".format(operator[i])  # 添加 AND/OR
-        except IndexError as e:
-            print(e)
-            # 出错时返回一个必定为空的条件
-            return "SELECT * FROM papers WHERE year=1900"
-    # 添加最后一个关键词（没有运算符跟随）
-    clause += base_title.format(keywords[-1])
+    Args:
+        keywords: 关键词列表
+        operators: 运算符列表 ("and" 或 "or")
+        source_list: 会议筛选列表（如 ["ccs", "sp"]）
+        year_list: 年份筛选列表（如 [2022, 2023]）
 
-    # 用 OR 连接 abstract 部分
-    clause += " OR "
+    Returns:
+        (sql_template, params): SQL 模板（带 ? 占位符）和参数值列表
+    """
+    params = []
 
-    # --- 构建 abstract 部分的查询条件 ---
-    for i in range(len(operator)):
-        clause += base_abstract.format(keywords[i])
-        clause += " {0} ".format(operator[i])
-    clause += base_abstract.format(keywords[-1]) + ")"
+    # 构建 title 部分的条件
+    title_conditions = []
+    for kw in keywords:
+        title_conditions.append("title LIKE ?")
+        params.append(f"%{kw}%")
 
-    # ========== 第三步：添加可选的筛选条件 ==========
-    if source is not None:
-        # 会议筛选：conference IN (ccs, sp, uss, ...)
-        clause += (" AND conference IN (" + source + ") ")
-    if year is not None:
-        # 年份筛选：year IN (2022, 2023, ...)
-        clause += (" AND year IN (" + year + ") ")
+    # 用运算符连接
+    title_clause = ""
+    for i in range(len(operators)):
+        title_clause += title_conditions[i] + " "
+        title_clause += operators[i] + " "
+    title_clause += title_conditions[-1] if title_conditions else "1=1"
 
-    print(clause)
-    return base_query + clause
+    # 构建 abstract 部分的条件
+    abstract_conditions = []
+    for kw in keywords:
+        abstract_conditions.append("abstract LIKE ?")
+        params.append(f"%{kw}%")
+
+    abstract_clause = ""
+    for i in range(len(operators)):
+        abstract_clause += abstract_conditions[i] + " "
+        abstract_clause += operators[i] + " "
+    abstract_clause += abstract_conditions[-1] if abstract_conditions else "1=1"
+
+    # 组合：title 部分和 abstract 部分用 OR 连接
+    sql = f"(({title_clause}) OR ({abstract_clause}))"
+
+    # 添加 conference 筛选
+    if source_list:
+        placeholders = ",".join(["?" for _ in source_list])
+        sql += f" AND conference IN ({placeholders})"
+        params.extend(source_list)
+
+    # 添加 year 筛选
+    if year_list:
+        placeholders = ",".join(["?" for _ in year_list])
+        sql += f" AND year IN ({placeholders})"
+        params.extend(year_list)
+
+    return sql, params
 
 
 # =============================================================================
@@ -169,12 +130,12 @@ def home():
 
 
 # =============================================================================
-# 路由：搜索接口
+# 路由：搜索接口（已修复 SQL 注入）
 # =============================================================================
 @app.route('/search')
 def get_info():
     """
-    论文搜索 API
+    论文搜索 API（使用参数化查询，防止 SQL 注入）
 
     请求参数：
     - q: 搜索关键词（支持 + 和 | 运算符）
@@ -192,48 +153,83 @@ def get_info():
     }
     """
     # 获取请求参数
-    q = request.args.get("q")
+    q = request.args.get("q", "")
     source = request.args.get("s")
     year = request.args.get("y")
-    offset = int(request.args.get("offset"))
-    limit = int(request.args.get("limit"))
+    offset = request.args.get("offset", "0")
+    limit = request.args.get("limit", "10")
 
-    # 连接数据库
+    # ========== 输入验证 ==========
+    # 验证关键词：只允许字母、数字、空格、+、|、中文字符
+    if not re.match(r'^[\w\s\+\|\u4e00-\u9fff]+$', q):
+        return json.dumps({"code": 1, "msg": "Invalid keyword format"})
+    if len(q) > 200:
+        return json.dumps({"code": 1, "msg": "Keyword too long"})
+
+    # 验证 offset/limit：必须是正整数
+    try:
+        offset = max(0, int(offset))
+        limit = min(100, int(limit))  # 最多 100 条
+    except ValueError:
+        return json.dumps({"code": 1, "msg": "Invalid offset/limit"})
+
+    # 验证 source：白名单检查
+    ALLOWED_CONFERENCES = {
+        "ccs", "sp", "spw", "uss", "cest", "foci", "soups", "woot",
+        "tdsc", "tifs", "ndss", "acsac", "csur", "comsur", "esorics",
+        "csfw", "dsn", "compsec", "raid", "jcs", "tissec", "srds",
+        "jsac", "tmc", "ton", "sigcomm", "mobicom", "infocom", "nsdi", "www"
+    }
+    source_list = None
+    if source:
+        source_list = [s.strip().lower() for s in source.split(",")]
+        if not set(source_list).issubset(ALLOWED_CONFERENCES):
+            return json.dumps({"code": 1, "msg": "Invalid conference"})
+        # 转换为大写，因为数据库中存储的是大写
+        source_list = [s.upper() for s in source_list]
+
+    # 验证 year：必须是 4 位数字，范围 2016-2025
+    year_list = None
+    if year:
+        year_list = []
+        for y in year.split(","):
+            if not y.isdigit() or len(y) != 4:
+                return json.dumps({"code": 1, "msg": "Invalid year format"})
+            y_int = int(y)
+            if y_int < 2016 or y_int > 2025:
+                return json.dumps({"code": 1, "msg": "Year out of range"})
+            year_list.append(y_int)
+
+    # ========== 构建并执行查询 ==========
     conn = sqlite3.connect(sys.path[0] + "/papers.db")
     c = conn.cursor()
 
-    # 构建 WHERE 子句
-    query = keywords(q, source, year, offset)
-    results = []
-
-    # ========== 查询总数 ==========
     try:
-        base_q = "SELECT COUNT(*) FROM papers WHERE"
-        cursor = c.execute(base_q + query)
+        # 解析关键词
+        keywords, operators = parse_keywords(q)
+
+        # 构建 SQL 模板和参数
+        where_clause, params = build_search_query(keywords, operators, source_list, year_list)
+
+        # 查询总数
+        count_sql = f"SELECT COUNT(*) FROM papers WHERE {where_clause}"
+        cursor = c.execute(count_sql, params)
         total = cursor.fetchone()[0]
-    except sqlite3.Error as e:
-        total = -1
 
-    # ========== 查询实际数据 ==========
-    try:
-        query = "SELECT * FROM papers WHERE" + query
-        query += " ORDER BY year DESC "
-        query += "LIMIT {1} OFFSET {0}".format(offset, limit)
-
-        cursor = c.execute(query)
+        # 查询数据
+        data_sql = f"SELECT * FROM papers WHERE {where_clause} ORDER BY year DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        cursor = c.execute(data_sql, params)
 
         # 将查询结果转换为字典列表
         key_list = ["id", "conference", "year", "volume", "title",
                     "href", "origin", "abstract", "bib", "cat"]
-        for item in cursor:
-            results.append(dict(zip(key_list, item)))
+        results = [dict(zip(key_list, row)) for row in cursor]
 
         msg = {"code": 0, "msg": "success", "rows": results, "total": total}
 
-    except sqlite3.OperationalError as e:
-        msg = {"code": 1, "msg": str(e), "data": query}
-    except sqlite3.IntegrityError as e:
-        msg = {"code": 1, "msg": str(e), "data": query}
+    except sqlite3.Error as e:
+        msg = {"code": 1, "msg": str(e)}
     finally:
         conn.close()
 
@@ -241,12 +237,12 @@ def get_info():
 
 
 # =============================================================================
-# 路由：获取论文摘要
+# 路由：获取论文摘要（已修复 SQL 注入）
 # =============================================================================
 @app.route('/abstract/<q>')
 def get_abs(q):
     """
-    获取指定论文的标题和摘要
+    获取指定论文的标题和摘要（使用参数化查询，防止 SQL 注入）
 
     参数：
     - q: 论文 ID
@@ -258,22 +254,27 @@ def get_abs(q):
         "data": [[title, abstract]]
     }
     """
+    # 验证 id 是正整数
+    try:
+        paper_id = int(q)
+        if paper_id <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return json.dumps({"code": 1, "msg": "Invalid paper id"})
+
     conn = sqlite3.connect(sys.path[0] + "/papers.db")
     c = conn.cursor()
 
-    # ⚠️ 注意：这里直接拼接 ID，虽然用 int() 转换了，但仍应使用参数化查询
-    query = "SELECT title,abstract FROM papers WHERE id=" + str(int(q))
-    results = []
-
     try:
-        cursor = c.execute(query)
-        for item in cursor:
-            results.append(item)
+        # 参数化查询
+        cursor = c.execute(
+            "SELECT title, abstract FROM papers WHERE id=?",
+            (paper_id,)
+        )
+        results = list(cursor)
         msg = {"code": 0, "msg": "success", "data": results}
-    except sqlite3.OperationalError as e:
-        msg = {"code": 1, "msg": str(e), "data": query}
-    except sqlite3.IntegrityError as e:
-        msg = {"code": 1, "msg": str(e), "data": query}
+    except sqlite3.Error as e:
+        msg = {"code": 1, "msg": str(e)}
     finally:
         conn.close()
 
