@@ -11,18 +11,17 @@ import json
 app = Flask(__name__)
 
 # =============================================================================
-# 配置常量
+# 配置常量（从 config.py 导入）
 # =============================================================================
-DB_PATH = sys.path[0] + "/papers.db"
-ALLOWED_CONFERENCES = {
-    "ccs", "sp", "spw", "uss", "cest", "foci", "soups", "woot",
-    "tdsc", "tifs", "ndss", "acsac", "csur", "comsur", "esorics",
-    "csfw", "dsn", "compsec", "raid", "jcs", "tissec", "srds",
-    "jsac", "tmc", "ton", "sigcomm", "mobicom", "infocom", "nsdi", "www"
-}
-MIN_YEAR, MAX_YEAR = 2016, 2025
-MAX_KEYWORD_LENGTH = 200
-MAX_LIMIT = 100
+from config import (
+    DB_PATH,
+    ALLOWED_CONFERENCES,
+    MIN_YEAR,
+    MAX_YEAR,
+    MAX_KEYWORD_LENGTH,
+    MAX_LIMIT,
+    ENV_NAME
+)
 
 
 # =============================================================================
@@ -404,6 +403,28 @@ def get_abs(q):
 
 
 if __name__ == '__main__':
+    # 如果是测试环境且数据库不存在，自动创建
+    if ENV_NAME == "TEST":
+        from config import init_test_db
+        success, msg = init_test_db()
+        if success:
+            print(f"提示: {msg}")
+
+    # 添加环境提示
+    print(f"\n{'='*50}")
+    print(f"Paper Searcher 启动中...")
+    print(f"当前环境: [{ENV_NAME}]")
+    print(f"数据库: {DB_PATH}")
+    print(f"{'='*50}")
+
+    # 安全检查：如果是生产环境，要求确认
+    if ENV_NAME == "PROD" and "--auto" not in sys.argv:
+        response = input("\n即将连接生产数据库，确认继续？(y/N): ")
+        if response.lower() != 'y':
+            print("已取消启动")
+            sys.exit(0)
+    print()
+
     try:
         host = sys.argv[1]
         port = sys.argv[2]

@@ -4,3 +4,11 @@ main.py
 spider.py
 papers.db
 .Ds_Store
+
+# 环境配置
+.env
+
+# 测试数据库
+papers_test.db
+
+/__pycache__/
