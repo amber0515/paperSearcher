@@ -1,7 +1,7 @@
 # CCF 会议/期刊收录计划
 
 ## 目标
-将 CCF 认定的全部会议和期刊（约 394 个会议 + 大量期刊）收录到数据库中，作为后续论文管理的索引依据。
+将 CCF 认定的全部会议和期刊收录到数据库中，作为后续论文管理的索引依据。
 
 ---
 
@@ -18,6 +18,7 @@ CREATE TABLE ccf_venues (
     ccf_rank TEXT NOT NULL,                   -- 'A', 'B', 或 'C'
     venue_type TEXT NOT NULL,                 -- 'conference' 或 'journal'
     domain TEXT NOT NULL,                     -- 专业领域代码 (10 个领域)
+    dblp_url TEXT,                            -- DBLP 链接
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,37 +47,109 @@ CREATE INDEX idx_ccf_domain ON ccf_venues(domain);
 
 ---
 
+## 目录结构
+
+```
+crawler/
+├── ccf/                     # CCF 爬虫模块（独立目录）
+│   ├── __init__.py
+│   ├── crawler.py           # 使用 Crawl4AI 抓取 CCF 网站
+│   ├── parser.py            # 解析 HTML/Markdown 数据
+│   ├── database.py          # 数据库操作 (保存/查询)
+│   └── cli.py               # 命令行接口
+├── __init__.py
+├── main.py                  # 现有爬虫
+├── crawler.py               # 现有爬虫 (使用 Crawl4AI)
+├── extractor.py             # 现有解析器
+└── config.py                # 现有配置
+```
+
+---
+
 ## 爬虫实现
 
 ### 数据源
 - **主数据源**: https://ccf.atom.im/ (单页面，结构化数据，易于解析)
 - **备用数据源**: https://www.ccf.org.cn/Academic_Evaluation/By_category/
 
-### 新建文件
+### 使用 Crawl4AI 抓取
 
-| 文件 | 功能 |
-|------|------|
-| `crawler/ccf_crawler.py` | 抓取 CCF 网站数据 |
-| `crawler/ccf_parser.py` | 解析 HTML 表格数据 |
-| `crawler/ccf_db.py` | 数据库操作 (保存/查询) |
-| `crawler/ccf_cli.py` | 命令行接口 |
+```python
+import asyncio
+from crawl4ai import AsyncWebCrawler
+
+async def fetch_ccf_page() -> str:
+    """
+    使用 Crawl4AI 获取 CCF 网站内容
+    """
+    url = "https://ccf.atom.im/"
+
+    async with AsyncWebCrawler(verbose=True) as crawler:
+        result = await crawler.arun(url=url)
+        if result.success:
+            # 使用 markdown 格式解析更简单
+            return result.markdown
+        else:
+            raise Exception(f"Failed to fetch: {result.error_message}")
+```
 
 ### CLI 使用方式
 
 ```bash
 # 预览数据（不保存）
-python -m crawler.ccf_cli --preview-only --preview 20
+python -m crawler.ccf.cli --preview-only --preview 20
 
-# 完整抓取并保存到测试数据库
-python -m crawler.ccf_cli --db papers_test.db
+# 抓取到测试数据库（默认）
+python -m crawler.ccf.cli
 
-# 完整抓取并保存到生产数据库
-python -m crawler.ccf_cli
+# 指定数据库
+python -m crawler.ccf.cli --db papers_test.db
+```
+
+**注意**: 默认使用 `papers_test.db` 测试环境，不会影响生产数据。
+
+---
+
+## 最小版本 (MVP)
+
+### Phase 0: 最小可用版本
+
+**目标**: 快速验证方案可行性
+
+#### 文件结构
+```
+crawler/ccf/
+├── __init__.py
+├── crawler.py       # 使用 Crawl4AI 抓取网页
+├── parser.py        # 解析 Markdown 数据（含 dblp_url）
+├── database.py      # 存储到 papers_test.db
+└── cli.py           # 简单 CLI
+```
+
+#### 功能范围
+- [x] 使用 **Crawl4AI** 从 https://ccf.atom.im/ 抓取全部数据
+- [x] 解析：abbreviation, full_name, publisher, ccf_rank, venue_type, domain, dblp_url
+- [x] 创建 `ccf_venues` 表（测试数据库）
+- [x] 保存数据到 `papers_test.db`
+- [x] CLI 预览和保存功能
+
+#### 验证方式
+```bash
+# 1. 运行爬虫
+python -m crawler.ccf.cli --preview-only --preview 5
+
+# 2. 保存到测试数据库
+python -m crawler.ccf.cli
+
+# 3. 验证数据
+sqlite3 papers_test.db
+> SELECT * FROM ccf_venues LIMIT 5;
+> SELECT domain, COUNT(*) FROM ccf_venues GROUP BY domain;
 ```
 
 ---
 
-## 后端 API 扩展
+## 完整版本（后续扩展）
 
 ### 新增接口
 
@@ -85,16 +158,7 @@ python -m crawler.ccf_cli
 | `GET /api/ccf/venues` | 获取 CCF 会议/期刊列表 (支持 rank/type/domain 筛选) |
 | `GET /api/ccf/domains` | 获取各领域统计信息 |
 
-### 搜索集成
-
-修改 `/search` 接口，新增 `ccf_rank` 参数支持按等级筛选：
-```
-/search?q=security&ccf_rank=A
-```
-
----
-
-## 修改的现有文件
+### 修改的文件
 
 | 文件 | 修改内容 |
 |------|----------|
@@ -105,32 +169,22 @@ python -m crawler.ccf_cli
 
 ## 实现步骤
 
-### Phase 1: 数据库 (1-2 小时)
-- [ ] 创建 `ccf_venues` 表及索引
-- [ ] 创建数据库迁移脚本
+### Phase 0: 最小版本 (当前)
+- [ ] 创建 `crawler/ccf/` 目录结构
+- [ ] 实现 `crawler.py` - **使用 Crawl4AI 抓取网页**
+- [ ] 实现 `parser.py` - 解析 Markdown 数据（含 dblp_url）
+- [ ] 实现 `database.py` - 存储到测试数据库
+- [ ] 实现 `cli.py` - CLI 工具
+- [ ] 验证数据正确性
 
-### Phase 2: 爬虫 (2-3 小时)
-- [ ] 实现 `ccf_crawler.py` - 抓取网页
-- [ ] 实现 `ccf_parser.py` - 解析数据
-- [ ] 实现 `ccf_db.py` - 存储数据
-- [ ] 实现 `ccf_cli.py` - CLI 工具
-- [ ] 测试爬虫
-
-### Phase 3: 后端集成 (2-3 小时)
+### Phase 1: 后端集成 (MVP 后)
 - [ ] 更新 `config.py` 添加 CCF 配置
-- [ ] 实现 `/api/ccf/venues` 接口
-- [ ] 实现 `/api/ccf/domains` 接口
-- [ ] 修改 `/search` 接口支持 CCF 筛选
+- [ ] 实现基础 API 接口
 - [ ] 测试 API
 
-### Phase 4: 数据导入 (1 小时)
-- [ ] 运行爬虫填充数据
-- [ ] 验证数据完整性
-
-### Phase 5: 测试验证 (1 小时)
-- [ ] SQL 验证查询
-- [ ] API 接口测试
-- [ ] 端到端测试
+### Phase 2: 搜索集成
+- [ ] 修改搜索接口支持 CCF 筛选
+- [ ] 前端展示 CCF 等级
 
 ---
 
@@ -138,6 +192,12 @@ python -m crawler.ccf_cli
 
 ### SQL 验证
 ```sql
+-- 打开测试数据库
+sqlite3 papers_test.db
+
+-- 检查表结构
+.schema ccf_venues
+
 -- 检查各领域会议数量
 SELECT domain, COUNT(*) FROM ccf_venues GROUP BY domain;
 
@@ -146,25 +206,46 @@ SELECT ccf_rank, venue_type, COUNT(*) FROM ccf_venues GROUP BY ccf_rank, venue_t
 
 -- 验证已知会议
 SELECT * FROM ccf_venues WHERE abbreviation IN ('CCS', 'SIGCOMM', 'NeurIPS');
-```
 
-### API 测试
-```bash
-curl "http://localhost:5000/api/ccf/venues?rank=A&type=conference"
-curl "http://localhost:5000/api/ccf/domains"
+-- 检查 dblp_url 是否正确
+SELECT abbreviation, dblp_url FROM ccf_venues WHERE dblp_url IS NOT NULL LIMIT 5;
 ```
 
 ---
 
 ## 关键文件清单
 
-### 新建文件
-- `crawler/ccf_crawler.py`
-- `crawler/ccf_parser.py`
-- `crawler/ccf_db.py`
-- `crawler/ccf_cli.py`
-- `migrations/add_ccf_venues.sql`
+### 新建文件 (MVP)
+- `crawler/ccf/__init__.py`
+- `crawler/ccf/crawler.py` - **使用 Crawl4AI**
+- `crawler/ccf/parser.py`
+- `crawler/ccf/database.py`
+- `crawler/ccf/cli.py`
 
-### 修改文件
-- `config.py`
-- `website.py`
+### 后续修改
+- `config.py` (Phase 1)
+- `website.py` (Phase 1)
+
+---
+
+## 参考现有代码
+
+参考 `crawler/crawler.py` 中使用 Crawl4AI 的方式：
+
+```python
+import asyncio
+from crawl4ai import AsyncWebCrawler
+
+async def fetch_papers_from_dblp(conference: str, year: int) -> str:
+    url = build_dblp_url(conference, year)
+
+    async with AsyncWebCrawler(verbose=True) as crawler:
+        result = await crawler.arun(url=url)
+        if result.success:
+            return result.html  # 或 result.markdown
+        else:
+            raise Exception(f"Failed: {result.error_message}")
+
+def fetch_papers(conference: str, year: int) -> str:
+    return asyncio.run(fetch_papers_from_dblp(conference, year))
+```
