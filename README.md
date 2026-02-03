@@ -258,3 +258,10 @@ if __name__ == '__main__':
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mactavishmeng/paperSearcher&type=Date)](https://star-history.com/#mactavishmeng/paperSearcher&Date)
+
+
+# 安装
+
+python -m pip install -r requirements.txt
+
+crawl4ai-setup
