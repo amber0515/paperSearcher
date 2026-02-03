@@ -32,18 +32,18 @@ CREATE INDEX idx_ccf_domain ON ccf_venues(domain);
 
 ### 专业领域映射
 
-| 代码 | 领域 |
-|------|------|
-| ARCH | 计算机体系结构/并行与分布计算/存储系统 |
-| CN | 计算机网络 |
-| NIS | 网络与信息安全 |
-| SE | 软件工程/系统软件/程序设计语言 |
-| DB | 数据库/数据挖掘/内容检索 |
-| TC | 计算机科学理论 |
-| GM | 计算机图形学与多媒体 |
-| AI | 人工智能 |
-| HCIAndPC | 人机交互与普适计算 |
-| Cross_Compre_Emerging | 交叉/综合/新兴 |
+| 代码                  | 领域                                   |
+| --------------------- | -------------------------------------- |
+| ARCH                  | 计算机体系结构/并行与分布计算/存储系统 |
+| CN                    | 计算机网络                             |
+| NIS                   | 网络与信息安全                         |
+| SE                    | 软件工程/系统软件/程序设计语言         |
+| DB                    | 数据库/数据挖掘/内容检索               |
+| TC                    | 计算机科学理论                         |
+| GM                    | 计算机图形学与多媒体                   |
+| AI                    | 人工智能                               |
+| HCIAndPC              | 人机交互与普适计算                     |
+| Cross_Compre_Emerging | 交叉/综合/新兴                         |
 
 ---
 
@@ -97,7 +97,7 @@ async def fetch_ccf_page() -> str:
 
 ```bash
 # 预览数据（不保存）
-python -m crawler.ccf.cli --preview-only --preview 20
+python -m crawler.ccf.cli --preview-only
 
 # 抓取到测试数据库（默认）
 python -m crawler.ccf.cli
@@ -153,16 +153,16 @@ sqlite3 papers_test.db
 
 ### 新增接口
 
-| 接口 | 功能 |
-|------|------|
-| `GET /api/ccf/venues` | 获取 CCF 会议/期刊列表 (支持 rank/type/domain 筛选) |
-| `GET /api/ccf/domains` | 获取各领域统计信息 |
+| 接口                   | 功能                                                |
+| ---------------------- | --------------------------------------------------- |
+| `GET /api/ccf/venues`  | 获取 CCF 会议/期刊列表 (支持 rank/type/domain 筛选) |
+| `GET /api/ccf/domains` | 获取各领域统计信息                                  |
 
 ### 修改的文件
 
-| 文件 | 修改内容 |
-|------|----------|
-| `config.py` | 添加 CCF_DOMAINS, CCF_RANKS 等配置 |
+| 文件         | 修改内容                             |
+| ------------ | ------------------------------------ |
+| `config.py`  | 添加 CCF_DOMAINS, CCF_RANKS 等配置   |
 | `website.py` | 添加 CCF API 接口，支持 CCF 等级筛选 |
 
 ---
