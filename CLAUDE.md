@@ -22,10 +22,7 @@ paperSearcher/
 ├── .env.example           # 环境变量模板
 │
 ├── crawler/               # 论文爬虫模块
-│   ├── main.py           # CLI 入口
-│   ├── crawler.py        # Crawl4AI 爬虫
-│   ├── extractor.py      # HTML/Markdown 解析
-│   └── config.py         # 会议映射配置
+│   └── dblp_cli.py       # 基于 CCF 数据的 DBLP 爬虫 CLI
 │
 ├── crawler/ccf/           # CCF 排名爬虫模块
 │   ├── cli.py            # CLI 入口
@@ -74,11 +71,31 @@ python3 website.py 0.0.0.0 8080
 
 ### 使用爬虫
 
-```bash
-# 爬取 DBLP 论文（按会议和年份）
-python crawler/main.py CCS 2024
-python crawler/main.py sp 2023 --db papers_test.db
+#### DBLP 论文爬虫（基于 CCF 数据）
 
+```bash
+# 爬取指定会议的某一年
+python -m crawler.dblp_cli CCS 2024
+
+# 批量爬取：多个会议
+python -m crawler.dblp_cli CCS,SP,USS 2024
+
+# 批量爬取：多个年份
+python -m crawler.dblp_cli CCS 2022,2023,2024
+
+# 按 CCF 排名筛选：爬取所有 A 类安全会议
+python -m crawler.dblp_cli --rank A --domain NIS 2024
+
+# 指定数据库
+python -m crawler.dblp_cli CCS 2024 --db papers_test.db
+
+# 预览模式（不保存）
+python -m crawler.dblp_cli CCS 2024 --preview-only
+```
+
+#### CCF 排名爬虫
+
+```bash
 # 爬取 CCF 排名信息（仅预览）
 python -m crawler.ccf.cli --preview-only
 
@@ -111,19 +128,22 @@ python -m crawler.ccf.cli --db papers_test.db
 - 输入验证规则
 - 生产环境启动安全确认
 
-支持的会议（28 个）：CCS, SP, USS, NDSS, SIGCOMM, ICML, NIPS, AAAI, ICLR, KDD, WWW, SenSys, INFOCOM, 等
+支持的会议（基于 CCF）：CCS, SP, USS, NDSS, SIGCOMM, ICML, NIPS, AAAI, ICLR, KDD, WWW, SenSys, INFOCOM, 等
 
 ### 爬虫模块
 
-**[crawler/](crawler/)** - DBLP 论文爬虫：
-- 支持 23 个会议的论文爬取
-- 提取标题、作者、链接、BibTeX
+**[crawler/dblp_cli.py](crawler/dblp_cli.py)** - 基于 CCF 数据的 DBLP 论文爬虫：
+- 从 CCF 数据库读取会议信息
+- 支持 CCF 排名筛选（A/B/C）
+- 支持领域筛选（AI/NIS/CN/...）
+- 批量爬取多个会议/年份
 - 基于 Crawl4AI 的高效爬取
 
 **[crawler/ccf/](crawler/ccf/)** - CCF 排名爬虫：
 - 爬取 CCF 官方会议/期刊排名
 - 覆盖 10 个领域（AI、网络与安全、软件工程等）
 - 存储 A/B/C 级分类信息
+- 633 个会议/期刊
 
 ## 数据库
 
@@ -176,7 +196,7 @@ ENV=test  # 或 'prod' 切换生产环境
 ## 开发计划
 
 详见 [plans/](plans/) 目录：
-- [CRAWLER_PLAN.md](plans/CRAWLER_PLAN.md) - 论文爬虫实现计划
+- [DBLP_CRAWLER_MVP.md](plans/DBLP_CRAWLER_MVP.md) - 基于 CCF 数据的 DBLP 爬虫 MVP
 - [CCF_INTEGRATION_PLAN.md](plans/CCF_INTEGRATION_PLAN.md) - CCF 集成计划
 - [CONFIG_PLAN.md](plans/CONFIG_PLAN.md) - 配置管理计划
 - [DB_GUI_PLAN.md](plans/DB_GUI_PLAN.md) - 数据库 GUI 工具指南
