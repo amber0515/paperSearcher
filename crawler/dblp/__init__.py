@@ -9,8 +9,8 @@ DBLP 论文爬虫模块
 """
 
 from .models import Paper, Venue, Stats
-from .url_builder import build_year_url
-from .fetcher import fetch_papers
+from .url_builder import build_year_url, build_year_url_all
+from .fetcher import fetch_papers, fetch_papers_with_fallback, fetch_all_successful_urls
 from .parser import extract_papers_from_html
 from .database import get_conferences_from_ccf, save_papers_to_db
 
@@ -19,7 +19,10 @@ __all__ = [
     'Venue',
     'Stats',
     'build_year_url',
+    'build_year_url_all',
     'fetch_papers',
+    'fetch_papers_with_fallback',
+    'fetch_all_successful_urls',
     'extract_papers_from_html',
     'get_conferences_from_ccf',
     'save_papers_to_db',

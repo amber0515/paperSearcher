@@ -32,14 +32,31 @@ def extract_papers_from_html(
     skipped = []
     soup = BeautifulSoup(html, 'html.parser')
 
-    # 查找论文链接（指向 /rec/conf/ 的链接）
-    paper_links = soup.find_all('a', href=re.compile(r'/rec/conf/[^/]+/[^/]+\.html'))
+    # 尝试查找包含论文的列表项
+    # DBLP 通常用 <li class="entry"> 或类似的结构
+    entries = soup.find_all('li', class_=re.compile(r'entry|inproceedings'))
+
+    if not entries:
+        # 回退到查找所有 li 元素
+        entries = soup.find_all('li')
+
+    if verbose:
+        print(f"\n  📋 找到 {len(entries)} 个列表项")
 
     seen_titles = set()
 
-    for link in paper_links:
-        href = link.get('href', '')
-        title = link.get_text(strip=True)
+    for entry in entries:
+        # 方法1: 查找标题 span
+        title_elem = entry.find('span', class_='title')
+        if title_elem:
+            title = title_elem.get_text(strip=True)
+        else:
+            # 方法2: 查找指向论文的链接
+            link = entry.find('a', href=re.compile(r'/rec/conf/[^/]+/[^/]+\.html'))
+            if link:
+                title = link.get_text(strip=True)
+            else:
+                continue
 
         # 跳过非论文条目
         skip_reason = _should_skip_verbose(title)
@@ -55,13 +72,15 @@ def extract_papers_from_html(
             continue
         seen_titles.add(title)
 
+        # 获取链接
+        link = entry.find('a', href=re.compile(r'/rec/conf/'))
+        href = link.get('href', '') if link else ''
+
         # 获取作者
         authors = ""
-        li_parent = link.find_parent('li')
-        if li_parent:
-            author_links = li_parent.find_all('a', href=re.compile(r'/pid/'))
-            author_names = [a.get_text(strip=True) for a in author_links]
-            authors = ', '.join(author_names) if author_names else ""
+        author_links = entry.find_all('a', href=re.compile(r'/pid/'))
+        author_names = [a.get_text(strip=True) for a in author_links]
+        authors = ', '.join(author_names) if author_names else ""
 
         # 确保完整 URL
         if href and not href.startswith('http'):
@@ -78,12 +97,14 @@ def extract_papers_from_html(
             'abstract': None,
         })
 
-    if verbose and skipped:
-        print(f"\n  🔍 跳过的条目 ({len(skipped)} 条):")
-        for i, item in enumerate(skipped[:10], 1):  # 最多显示 10 条
-            print(f"    [{i}] \"{item['title'][:50]}...\" - {item['reason']}")
-        if len(skipped) > 10:
-            print(f"    ... 还有 {len(skipped) - 10} 条")
+    if verbose:
+        print(f"\n  📊 解析结果: {len(papers)} 篇论文, {len(skipped)} 条跳过")
+        if skipped:
+            print(f"\n  🔍 跳过的条目 (前10条):")
+            for i, item in enumerate(skipped[:10], 1):
+                print(f"    [{i}] \"{item['title'][:50]}...\" - {item['reason']}")
+            if len(skipped) > 10:
+                print(f"    ... 还有 {len(skipped) - 10} 条")
 
     return papers
 

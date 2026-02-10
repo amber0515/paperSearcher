@@ -19,8 +19,8 @@ sys.path.insert(0, str(project_root))
 
 # 导入 dblp 模块
 from crawler.dblp import (
-    build_year_url,
-    fetch_papers,
+    build_year_url_all,
+    fetch_all_successful_urls,
     extract_papers_from_html,
     get_conferences_from_ccf,
     save_papers_to_db,
@@ -29,6 +29,11 @@ from crawler.dblp import (
 
 # 默认测试数据库路径
 DEFAULT_TEST_DB = Path(__file__).parent.parent / "papers_test.db"
+
+# 会议别名映射（用户输入 -> 数据库存储的缩写）
+CONFERENCE_ALIASES = {
+    "USS": "USENIX SECURITY",
+}
 
 
 def main() -> int:
@@ -112,36 +117,48 @@ def main() -> int:
         for year in years:
             print(f"\n[{conf} {year}]")
 
-            # 构建 URL
-            url = build_year_url(venue['dblp_url'], year)
-            if not url:
+            # 构建所有可能的 URL（支持一年多场）
+            urls = build_year_url_all(venue['dblp_url'], venue['abbreviation'], year)
+            if not urls:
                 print(f"  错误: 无法构建 URL (dblp_url: {venue['dblp_url']})")
                 continue
 
-            print(f"  URL: {url}")
+            if len(urls) > 1:
+                print(f"  尝试 {len(urls)} 个场次...")
+            else:
+                print(f"  URL: {urls[0]}")
 
             try:
-                # 获取页面
-                html = fetch_papers(url)
-                print(f"  获取到 {len(html):,} 字符")
+                # 获取所有成功的页面（支持一年多场）
+                results = fetch_all_successful_urls(urls)
+                if not results:
+                    print(f"  错误: 所有 URL 都失败")
+                    continue
 
-                # 提取论文
-                papers = extract_papers_from_html(html, conf, year, verbose=args.verbose)
-                print(f"  找到 {len(papers)} 篇论文")
+                print(f"  成功访问 {len(results)} 个场次")
 
-                if not papers:
+                # 合并所有场次的论文
+                all_papers = []
+                for actual_url, html in results:
+                    print(f"    - {actual_url}: {len(html):,} 字符")
+                    papers = extract_papers_from_html(html, conf, year, verbose=args.verbose)
+                    all_papers.extend(papers)
+
+                print(f"  找到 {len(all_papers)} 篇论文（合并）")
+
+                if not all_papers:
                     continue
 
                 # 预览模式：显示详细信息
                 if args.preview_only:
-                    _show_preview(papers)
+                    _show_preview(all_papers)
                     continue
 
                 # 非预览模式：仅显示前 3 篇
-                _show_summary(papers)
+                _show_summary(all_papers)
 
                 # 保存到数据库
-                stats = save_papers_to_db(papers, args.db)
+                stats = save_papers_to_db(all_papers, args.db)
                 print(f"  新增: {stats.added}, 跳过: {stats.skipped}, 错误: {stats.errors}")
 
                 total_stats += stats
@@ -174,8 +191,12 @@ def _get_conferences(args) -> list:
         conf_list = [c.strip().upper() for c in args.conferences.split(',')]
         conferences = []
         for conf in conf_list:
+            # 应用别名映射
+            mapped_conf = CONFERENCE_ALIASES.get(conf, conf)
+
             venues = get_conferences_from_ccf(args.db, venue_type='conference')
-            venue = next((v for v in venues if v['abbreviation'] == conf), None)
+            # 不区分大小写匹配
+            venue = next((v for v in venues if v['abbreviation'].upper() == mapped_conf.upper()), None)
             if venue:
                 conferences.append(venue)
             else:
