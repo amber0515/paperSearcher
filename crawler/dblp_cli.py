@@ -33,6 +33,7 @@ DEFAULT_TEST_DB = Path(__file__).parent.parent / "papers_test.db"
 # 会议别名映射（用户输入 -> 数据库存储的缩写）
 CONFERENCE_ALIASES = {
     "USS": "USENIX SECURITY",
+    "SP": "S&P",
 }
 
 

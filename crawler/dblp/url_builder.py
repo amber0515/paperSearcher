@@ -18,10 +18,10 @@ URL 构建模块
 # 示例:
 SPECIAL_URLS = {
     "CRYPTO": {
-        "2025": {"template": "{base}crypto{year}-{n}.html", "range": [1, 8]},  # crypto2025-1.html ~ crypto2025-8.html
+        "2025": {"template": "{base}/crypto{year}-{n}.html", "range": [1, 8]},  # crypto2025-1.html ~ crypto2025-8.html
     },
     "EUROCRYPT": {
-        "2025": {"template": "{base}eurocrypt{year}-{n}.html", "range": [1, 8]},
+        "2025": {"template": "{base}/eurocrypt{year}-{n}.html", "range": [1, 8]},
     },
     # "SP": ["{base}sp{year}.html"],  # 简单模板
 }
