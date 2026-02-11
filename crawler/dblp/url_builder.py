@@ -9,21 +9,23 @@ URL 构建模块
 # ============================================================
 #
 # 配置格式：
-#   1. 范围模式（有规律多场次）: {"template": "模板", "range": [起始, 结束]}
-#   2. 完整URL列表: ["url1", "url2", ...]
-#   3. 单一模板: ["{base}xxx{year}.html"]
-#
-# 模板变量: {base}=基础URL, {year}=年份, {code}=会议代码, {n}=场次编号
+#   1. 期刊卷号模式: {"volume_offset": 偏移量}
+#   2. 直接URL: "年份": "完整URL"
+#   3. 多场次会议: {"template": "模板", "range": [起始, 结束]}
+#   4. URL列表: ["url1", "url2"]
 #
 # 示例:
 SPECIAL_URLS = {
-    "CRYPTO": {
-        "2025": {"template": "{base}/crypto{year}-{n}.html", "range": [1, 8]},  # crypto2025-1.html ~ crypto2025-8.html
-    },
-    "EUROCRYPT": {
-        "2025": {"template": "{base}/eurocrypt{year}-{n}.html", "range": [1, 8]},
-    },
-    # "SP": ["{base}sp{year}.html"],  # 简单模板
+    # 期刊：卷号计算模式 (volume = year + offset)
+    "TIFS": {"volume_offset": -2004},  # 2025年 = 第21卷
+    "TDSC": {"volume_offset": -2003},  # 2025年 = 第22卷
+
+    # 直接URL（备用）
+    # "TIFS": {"2025": "https://dblp.uni-trier.de/db/journals/tifs/tifs21.html"},
+
+    # 会议：多场次
+    "CRYPTO": {"template": "{base}/crypto{year}-{n}.html", "range": [1, 8]},
+    "EUROCRYPT": {"template": "{base}/eurocrypt{year}-{n}.html", "range": [1, 8]},
 }
 # ============================================================
 
@@ -53,6 +55,11 @@ def build_year_url_all(dblp_url: str, conf_abbr: str, year: int) -> list[str]:
     if conf_abbr in SPECIAL_URLS:
         config = SPECIAL_URLS[conf_abbr]
 
+        # 期刊卷号模式
+        if isinstance(config, dict) and 'volume_offset' in config:
+            volume = year + config['volume_offset']
+            return [f"{base}/{code}{volume}.html"]
+
         if isinstance(config, dict):
             # 字典格式：按年份/年份范围配置
             patterns = _get_patterns_for_year(config, year)
@@ -74,15 +81,18 @@ def build_year_url_all(dblp_url: str, conf_abbr: str, year: int) -> list[str]:
                 for n in range(start, end + 1):
                     url = template.format(base=base, year=year, code=code, n=n)
                     urls.append(url)
+            elif isinstance(patterns, str) and patterns.startswith('http'):
+                # 直接URL
+                urls.append(patterns)
+            elif isinstance(patterns, str):
+                # 单个模板字符串
+                urls.append(patterns.format(base=base, year=year, code=code))
             else:
-                # 标准模式：列表或单个值
+                # 列表格式
                 for pattern in patterns:
-                    # 判断是完整URL还是模板
                     if isinstance(pattern, str) and pattern.startswith('http'):
-                        # 完整URL，直接使用
                         urls.append(pattern)
                     else:
-                        # 模板字符串，进行替换
                         urls.append(pattern.format(base=base, year=year, code=code))
             if urls:
                 return urls

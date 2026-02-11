@@ -186,7 +186,7 @@ def _check_dependencies() -> None:
 
 
 def _get_conferences(args) -> list:
-    """获取会议列表"""
+    """获取会议列表（支持会议和期刊）"""
     if args.conferences:
         # 指定了具体会议
         conf_list = [c.strip().upper() for c in args.conferences.split(',')]
@@ -195,13 +195,18 @@ def _get_conferences(args) -> list:
             # 应用别名映射
             mapped_conf = CONFERENCE_ALIASES.get(conf, conf)
 
+            # 先查找会议，再查找期刊
             venues = get_conferences_from_ccf(args.db, venue_type='conference')
-            # 不区分大小写匹配
             venue = next((v for v in venues if v['abbreviation'].upper() == mapped_conf.upper()), None)
+
+            if not venue:
+                venues = get_conferences_from_ccf(args.db, venue_type='journal')
+                venue = next((v for v in venues if v['abbreviation'].upper() == mapped_conf.upper()), None)
+
             if venue:
                 conferences.append(venue)
             else:
-                print(f"警告: 未找到会议 {conf}")
+                print(f"警告: 未找到会议/期刊 {conf}")
         return conferences
     else:
         # 使用筛选条件
