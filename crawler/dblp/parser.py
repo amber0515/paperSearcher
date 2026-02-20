@@ -34,6 +34,58 @@ class EntryParser(ABC):
             return href
         return ''
 
+    def extract_origin(self, entry: Tag) -> str:
+        """提取原始会议/期刊网站链接
+
+        从论文条目中提取原始发布网站的链接。
+        优先级：
+        1. nav.publ > .body > .ee > a (electronic edition)
+        2. 外部链接（usenix.org, dl.acm.org, ieeexplore.ieee.org 等）
+        """
+        nav = entry.find('nav', class_='publ')
+        if not nav:
+            return ''
+
+        # 方法1: 优先查找 .body 下的 .ee (electronic edition) 链接
+        first_dropdown = nav.find('li', class_='drop-down')
+        if first_dropdown:
+            body = first_dropdown.find('div', class_='body')
+            if body:
+                ee = body.find('li', class_='ee')
+                if ee:
+                    link = ee.find('a', href=True)
+                    if link:
+                        href = link.get('href', '')
+                        # 如果是 DOI 链接，继续寻找其他外部链接
+                        if 'doi.org' in href:
+                            pass  # 继续查找其他链接
+                        else:
+                            return href
+
+        # 方法2: 查找外部链接（usenix.org, dl.acm.org, ieeexplore.ieee.org 等）
+        all_links = entry.find_all('a', href=True)
+        external_patterns = [
+            r'https?://[^/]*\.usenix\.org/',
+            r'https?://dl\.acm\.org/',
+            r'https?://ieeexplore\.ieee\.org/',
+            r'https?://openaccess\.thecvf\.com/',
+            r'https?://papers\.nips\.cc/',
+            r'https?://proceedings\.mlr\.press/',
+        ]
+        for link in all_links:
+            href = link.get('href', '')
+            for pattern in external_patterns:
+                if re.search(pattern, href):
+                    return href
+
+        # 方法3: 如果没有外部链接，返回 DOI 链接
+        for link in all_links:
+            href = link.get('href', '')
+            if href.startswith('https://doi.org/'):
+                return href
+
+        return ''
+
     def extract_authors(self, entry: Tag) -> str:
         """提取作者"""
         author_links = entry.find_all('a', href=re.compile(r'/pid/'))
@@ -120,8 +172,9 @@ def _parse_entry(entry: Tag, parsers: List[EntryParser], conference: str, year: 
             title = parser.extract_title(entry)
             href = parser.extract_href(entry)
             authors = parser.extract_authors(entry)
-            return title, href, authors
-    return None, '', ''
+            origin = parser.extract_origin(entry)
+            return title, href, authors, origin
+    return None, '', '', ''
 
 
 def extract_papers_from_html(
@@ -151,7 +204,7 @@ def extract_papers_from_html(
     seen_titles = set()
 
     for entry in entries:
-        title, href, authors = _parse_entry(entry, DEFAULT_PARS, conference, year)
+        title, href, authors, origin = _parse_entry(entry, DEFAULT_PARS, conference, year)
 
         if not title:
             continue
@@ -172,7 +225,7 @@ def extract_papers_from_html(
             'authors': authors,
             'href': href,
             'bib': '',
-            'origin': '',
+            'origin': origin,
             'abstract': None,
         })
 

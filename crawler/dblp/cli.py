@@ -227,7 +227,9 @@ def _show_preview(papers: list) -> None:
     for i, p in enumerate(papers, 1):
         print(f"\n  [{i}] {p['title']}")
         print(f"      作者: {p['authors'] or '(未知)'}")
-        print(f"      链接: {p['href']}")
+        print(f"      DBLP链接: {p['href']}")
+        if p.get('origin'):
+            print(f"      原始链接: {p['origin']}")
         print(f"      年份: {p['year']}")
         print(f"      会议: {p['conference']}")
     print(f"\n  {'─' * 70}")

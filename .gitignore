@@ -11,3 +11,5 @@ papers.db
 papers_test.db
 
 __pycache__/
+
+/.playwright-mcp/
