@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # 添加项目根目录到路径
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 导入 dblp 模块
@@ -28,7 +28,7 @@ from crawler.dblp import (
 )
 
 # 默认测试数据库路径
-DEFAULT_TEST_DB = Path(__file__).parent.parent / "papers_test.db"
+DEFAULT_TEST_DB = Path(__file__).parent.parent.parent / "papers_test.db"
 
 # 会议别名映射（用户输入 -> 数据库存储的缩写）
 CONFERENCE_ALIASES = {

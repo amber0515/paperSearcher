@@ -113,6 +113,17 @@ def should_skip_title(title: str) -> tuple[bool, str]:
     return False, ""
 
 
+def _parse_entry(entry: Tag, parsers: List[EntryParser], conference: str, year: int) -> tuple:
+    """使用解析器列表解析单个条目"""
+    for parser in parsers:
+        if parser.can_parse(entry):
+            title = parser.extract_title(entry)
+            href = parser.extract_href(entry)
+            authors = parser.extract_authors(entry)
+            return title, href, authors
+    return None, '', ''
+
+
 def extract_papers_from_html(
     html: str,
     conference: str,
@@ -137,7 +148,7 @@ def extract_papers_from_html(
     entries = soup.find_all('li', class_=re.compile(r'entry|inproceedings'))
 
     papers = []
-    skipped = []
+    seen_titles = set()
 
     for entry in entries:
         title, href, authors = _parse_entry(entry, DEFAULT_PARS, conference, year)
@@ -147,7 +158,6 @@ def extract_papers_from_html(
 
         skip, reason = should_skip_title(title)
         if skip:
-            skipped.append({'title': title, 'reason': skip_reason})
             continue
 
         if title in seen_titles:
