@@ -140,7 +140,7 @@ def get_papers_without_abstract(
 
     Args:
         db_path: 数据库路径
-        limit: 返回数量限制
+        limit: 返回数量限制 (0 或 None 表示无限制)
         conference: 会议筛选
         year: 年份筛选
 
@@ -170,8 +170,9 @@ def get_papers_without_abstract(
         query += " AND year = ?"
         params.append(year)
 
-    query += " LIMIT ?"
-    params.append(limit)
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
@@ -201,7 +202,7 @@ def get_papers_for_refresh(
 
     Args:
         db_path: 数据库路径
-        limit: 返回数量限制
+        limit: 返回数量限制 (0 或 None 表示无限制)
         conference: 会议筛选
         year: 年份筛选
         has_doi: 是否只返回有 DOI 的论文
@@ -230,8 +231,9 @@ def get_papers_for_refresh(
         query += " AND year = ?"
         params.append(year)
 
-    query += " LIMIT ?"
-    params.append(limit)
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
 
     cursor.execute(query, params)
     rows = cursor.fetchall()

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 async def fetch_abstracts(
     db_path: str,
-    limit: int = 100,
+    limit: int = 0,
     conference: str = None,
     year: int = None,
     delay: float = 0.5,
@@ -52,10 +52,13 @@ async def fetch_abstracts(
         logging.getLogger().setLevel(logging.DEBUG)
 
     # 获取需要处理论文
+    # limit=0 表示无限制
+    db_limit = limit if limit > 0 else None
+
     if refresh:
         papers = get_papers_for_refresh(
             db_path,
-            limit=limit,
+            limit=db_limit,
             conference=conference,
             year=year,
             has_doi=True
@@ -63,7 +66,7 @@ async def fetch_abstracts(
     else:
         papers = get_papers_without_abstract(
             db_path,
-            limit=limit,
+            limit=db_limit,
             conference=conference,
             year=year
         )
@@ -146,8 +149,8 @@ def main():
     parser.add_argument(
         '--limit',
         type=int,
-        default=100,
-        help='处理论文数量限制 (默认: 100)'
+        default=0,
+        help='处理论文数量限制 (默认: 0 表示无限制)'
     )
 
     parser.add_argument(

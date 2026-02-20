@@ -103,9 +103,9 @@ class SemanticScholarClient:
 
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper"
 
-    # 免费版限制: 100 次/5分钟
-    RATE_LIMIT = 100
-    RATE_WINDOW = 300  # 5 分钟
+    # 限制: 1 次/秒
+    RATE_LIMIT = 1
+    RATE_WINDOW = 1.5  # 1.5 秒
 
     def __init__(self):
         self.session = requests.Session()
