@@ -125,7 +125,9 @@ EXTRACTORS = {
 
 ```bash
 # DBLP 论文爬虫
-python -m crawler.dblp.cli CCS 2024
+* 网安顶会顶刊
+python -m crawler.dblp.cli CCS,USS,SP,NDSS,CRYPTO,EUROCRYPT,TIFS,TDSCS 2024
+* 测试
 python -m crawler.dblp.cli USS 2025 --preview-only --verbose
 
 # CCF 排名爬虫

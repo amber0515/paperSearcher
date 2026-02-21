@@ -15,6 +15,7 @@ app = Flask(__name__)
 # =============================================================================
 from config import (
     DB_PATH,
+    PAPERS_TABLE,
     ALLOWED_CONFERENCES,
     MIN_YEAR,
     MAX_YEAR,
@@ -266,12 +267,12 @@ def search_papers(where_clause: str, params: list, limit: int, offset: int):
     try:
         with get_db_connection() as (conn, cursor):
             # 查询总数
-            count_sql = f"SELECT COUNT(*) FROM papers WHERE {where_clause}"
+            count_sql = f"SELECT COUNT(*) FROM {PAPERS_TABLE} WHERE {where_clause}"
             cursor.execute(count_sql, params)
             total = cursor.fetchone()[0]
 
             # 查询数据
-            data_sql = f"SELECT * FROM papers WHERE {where_clause} ORDER BY year DESC LIMIT ? OFFSET ?"
+            data_sql = f"SELECT * FROM {PAPERS_TABLE} WHERE {where_clause} ORDER BY year DESC LIMIT ? OFFSET ?"
             cursor.execute(data_sql, params + [limit, offset])
 
             # 将查询结果转换为字典列表
@@ -298,7 +299,7 @@ def get_paper_abstract(paper_id: int):
     try:
         with get_db_connection() as (conn, cursor):
             cursor.execute(
-                "SELECT title, abstract FROM papers WHERE id=?",
+                f"SELECT title, abstract FROM {PAPERS_TABLE} WHERE id=?",
                 (paper_id,)
             )
             results = list(cursor)

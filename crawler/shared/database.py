@@ -7,6 +7,11 @@ import sqlite3
 from pathlib import Path
 from typing import List, Dict, Optional
 
+# 导入配置
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from config import PAPERS_TABLE
+
 
 # Default database path
 DEFAULT_DB = Path(__file__).parent.parent.parent / "papers.db"
@@ -39,9 +44,9 @@ def get_papers_without_abstract(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    query = """
+    query = f"""
         SELECT id, title, href, origin, abstract
-        FROM papers
+        FROM {PAPERS_TABLE}
         WHERE (abstract IS NULL OR abstract = '' OR abstract = 'N/A')
     """
     params = []
@@ -97,9 +102,9 @@ def get_papers_for_refresh(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    query = """
+    query = f"""
         SELECT id, title, href, origin, abstract
-        FROM papers
+        FROM {PAPERS_TABLE}
         WHERE 1=1
     """
     params = []
@@ -166,7 +171,7 @@ def update_paper_abstract(
 
     try:
         cursor.execute(
-            "UPDATE papers SET abstract = ? WHERE id = ?",
+            f"UPDATE {PAPERS_TABLE} SET abstract = ? WHERE id = ?",
             (abstract, paper_id)
         )
         success = cursor.rowcount > 0
@@ -195,7 +200,7 @@ def get_paper_by_id(db_path: str, paper_id: int) -> Optional[Dict]:
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id, title, href, origin, abstract FROM papers WHERE id = ?",
+        f"SELECT id, title, href, origin, abstract FROM {PAPERS_TABLE} WHERE id = ?",
         (paper_id,)
     )
     row = cursor.fetchone()
@@ -242,7 +247,7 @@ def save_papers_to_db(papers: List[Dict], db_path: str) -> Stats:
         try:
             # 检查是否已存在
             cursor.execute(
-                "SELECT id FROM papers WHERE title = ? AND conference = ? AND year = ?",
+                f"SELECT id FROM {PAPERS_TABLE} WHERE title = ? AND conference = ? AND year = ?",
                 (paper['title'], paper['conference'], paper['year'])
             )
             if cursor.fetchone():
@@ -250,8 +255,8 @@ def save_papers_to_db(papers: List[Dict], db_path: str) -> Stats:
                 continue
 
             # 插入新论文
-            cursor.execute("""
-                INSERT INTO papers (conference, year, title, href, origin, bib, abstract)
+            cursor.execute(f"""
+                INSERT INTO {PAPERS_TABLE} (conference, year, title, href, origin, bib, abstract)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 paper['conference'],

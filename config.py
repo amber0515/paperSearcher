@@ -100,6 +100,9 @@ def init_test_db():
 # 业务配置
 # =============================================================================
 
+# Papers 表名配置 (papers: 原表, papers_new: 新表)
+PAPERS_TABLE = "papers_new"
+
 ALLOWED_CONFERENCES = {
     "ccs", "sp", "spw", "uss", "cest", "foci", "soups", "woot",
     "tdsc", "tifs", "ndss", "acsac", "csur", "comsur", "esorics",
