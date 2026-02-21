@@ -34,7 +34,8 @@ async def fetch_abstracts(
     year: int = None,
     delay: float = 0.5,
     verbose: bool = False,
-    refresh: bool = False
+    refresh: bool = False,
+    preview_only: bool = False
 ):
     """
     批量获取论文摘要
@@ -47,6 +48,7 @@ async def fetch_abstracts(
         delay: 请求间隔（秒）
         verbose: 详细输出
         refresh: 刷新已有摘要
+        preview_only: 只预览不保存
     """
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -100,13 +102,21 @@ async def fetch_abstracts(
                 )
 
                 if abstract:
-                    # 更新数据库
-                    if update_paper_abstract(db_path, paper_id, abstract, source):
+                    if preview_only:
+                        # 只预览，不保存
                         success += 1
-                        logger.info(f"  ✓ 成功 (来源: {source})")
+                        print(f"  ✓ 成功 (来源: {source})")
+                        print(f"  摘要: {abstract[:200]}...")
                     else:
-                        failed += 1
-                        logger.warning(f"  ✗ 更新失败")
+                        # 更新数据库
+                        if update_paper_abstract(db_path, paper_id, abstract, source):
+                            success += 1
+                            logger.info(f"  ✓ 成功 (来源: {source})")
+                            if verbose:
+                                print(f"  摘要: {abstract[:200]}...")
+                        else:
+                            failed += 1
+                            logger.warning(f"  ✗ 更新失败")
                 else:
                     skipped += 1
                     logger.debug(f"  - 跳过 (无摘要)")
@@ -183,6 +193,12 @@ def main():
         help='详细输出'
     )
 
+    parser.add_argument(
+        '--preview-only',
+        action='store_true',
+        help='只预览不保存到数据库'
+    )
+
     args = parser.parse_args()
 
     # 会议名称别名处理
@@ -208,7 +224,8 @@ def main():
             year=args.year,
             delay=args.delay,
             verbose=args.verbose,
-            refresh=args.refresh
+            refresh=args.refresh,
+            preview_only=args.preview_only
         ))
     except KeyboardInterrupt:
         logger.info("用户中断")

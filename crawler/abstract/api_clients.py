@@ -1,13 +1,15 @@
 """
 API 客户端模块
 
-提供 Crossref 和 Semantic Scholar API 客户端。
+提供 Crossref、Semantic Scholar 和 OpenAlex API 客户端。
 """
 import time
 import logging
 import requests
 from typing import Optional
 from xml.etree import ElementTree as ET
+
+from .openalex_client import OpenAlexClient
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +285,7 @@ class SemanticScholarClient:
 # 默认客户端实例
 _crossref_client: Optional[CrossrefClient] = None
 _semantic_scholar_client: Optional[SemanticScholarClient] = None
+_openalex_client: Optional[OpenAlexClient] = None
 
 
 def get_crossref_client() -> CrossrefClient:
@@ -299,3 +302,11 @@ def get_semantic_scholar_client() -> SemanticScholarClient:
     if _semantic_scholar_client is None:
         _semantic_scholar_client = SemanticScholarClient()
     return _semantic_scholar_client
+
+
+def get_openalex_client() -> OpenAlexClient:
+    """获取 OpenAlex 客户端单例"""
+    global _openalex_client
+    if _openalex_client is None:
+        _openalex_client = OpenAlexClient()
+    return _openalex_client
