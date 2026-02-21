@@ -13,7 +13,7 @@ class OpenAlexClient(BaseAPIClient):
 
     优势:
     - 免费，无需 API Key
-    - 每秒 10 次请求（比 Semantic Scholar 宽松 10 倍）
+    - 每秒 10 次请求
     - 覆盖 2 亿+ 学术论文
     """
 
@@ -71,6 +71,7 @@ class OpenAlexClient(BaseAPIClient):
             return None
 
     def search_by_title(self, title: str) -> Optional[str]:
+        """通过标题搜索获取摘要"""
         self._wait_for_rate_limit()
 
         try:
@@ -94,6 +95,7 @@ class OpenAlexClient(BaseAPIClient):
             if not results:
                 return None
 
+            # 尝试找到最佳匹配
             for paper in results:
                 paper_title = paper.get('title', '').lower()
                 title_lower = title.lower()
@@ -118,7 +120,7 @@ class OpenAlexClient(BaseAPIClient):
             return None
 
     def get_abstract_arxiv(self, arxiv_id: str) -> Optional[str]:
-        """OpenAlex 不直接支持 arXiv ID 搜索"""
+        """暂不支持 arXiv"""
         return None
 
     def _wait_for_rate_limit(self):
