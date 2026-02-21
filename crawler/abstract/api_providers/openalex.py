@@ -110,6 +110,7 @@ class OpenAlexClient(BaseAPIClient):
                         if abstract:
                             return self._reconstruct_abstract(abstract)
 
+            logger.debug(f"OpenAlex: no matching paper found for '{title}'")
             return None
 
         except requests.RequestException as e:

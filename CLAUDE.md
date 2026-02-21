@@ -11,25 +11,32 @@ paperSearcher/
 ├── requirements.txt        # 依赖
 │
 ├── crawler/
+│   ├── shared/            # 共享模块
+│   │   ├── database.py    # 统一数据库操作
+│   │   └── models.py      # 通用数据模型
+│   │
 │   ├── dblp/              # DBLP 论文爬虫
 │   │   ├── cli.py         # CLI 入口
-│   │   ├── url_builder.py # URL 构建
 │   │   ├── fetcher.py     # 网页获取
 │   │   ├── parser.py      # HTML 解析
-│   │   ├── database.py    # 数据库操作
-│   │   └── models.py      # 数据模型
+│   │   └── url_builder.py # URL 构建
 │   │
-│   ├── abstract/          # 论文摘要获取
+│   ├── ccf/               # CCF 排名爬虫
 │   │   ├── cli.py         # CLI 入口
-│   │   ├── fetcher.py    # 摘要获取器
-│   │   ├── api_clients.py # API 客户端
-│   │   ├── doi_extractor.py # DOI 提取
-│   │   └── database.py   # 复用共享数据库函数
+│   │   ├── fetcher.py     # 网页获取
+│   │   └── parser.py      # HTML 解析
 │   │
-│   ├── shared/            # 共享模块
-│   │   └── database.py   # 通用数据库操作
-│   │
-│   └── ccf/              # CCF 排名爬虫
+│   └── abstract/          # 论文摘要获取
+│       ├── cli.py         # CLI 入口
+│       ├── fetcher.py     # 摘要获取器
+│       ├── doi_extractor.py   # DOI 提取
+│       ├── api_providers/     # API 提供者
+│       │   ├── base.py
+│       │   └── semantic_scholar.py
+│       └── origin_extractors/ # 原始网站提取器
+│           ├── base.py
+│           ├── usenix.py
+│           └── llm.py
 │
 ├── papers.db              # 生产数据库
 └── papers_test.db         # 测试数据库
@@ -61,6 +68,9 @@ python -m crawler.ccf.cli --preview-only
 
 - `href`: DBLP 详情页链接
 - `origin`: 原始会议/期刊网站链接（如 usenix.org, dl.acm.org）
+
+**ccf_venues 表**：
+- `id`, `abbreviation`, `full_name`, `publisher`, `ccf_rank`, `venue_type`, `domain`, `dblp_url`
 
 ## 搜索 API
 

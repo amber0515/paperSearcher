@@ -1,0 +1,144 @@
+# 爬虫模块
+
+论文数据采集系统，包含三个爬虫模块和一个共享模块。
+
+## 模块结构
+
+```
+crawler/
+├── shared/              # 共享模块
+│   ├── database.py      # 统一数据库操作
+│   └── models.py        # 通用数据模型
+│
+├── dblp/                # DBLP 论文爬虫
+│   ├── cli.py           # CLI 入口
+│   ├── fetcher.py       # 网页获取
+│   ├── parser.py        # HTML 解析
+│   └── url_builder.py   # URL 构建
+│
+├── ccf/                 # CCF 排名爬虫
+│   ├── cli.py           # CLI 入口
+│   ├── fetcher.py       # 网页获取
+│   └── parser.py        # HTML 解析
+│
+└── abstract/            # 论文摘要获取
+    ├── cli.py           # CLI 入口
+    ├── fetcher.py       # 摘要获取调度
+    ├── doi_extractor.py # DOI 提取
+    ├── api_providers/   # API 提供者
+    │   ├── crossref.py
+    │   ├── openalex.py
+    │   └── semantic_scholar.py
+    └── origin_extractors/ # 原始网站提取器
+        ├── base.py
+        ├── usenix.py
+        └── llm.py
+```
+
+## 采集策略
+
+### 论文数据 (dblp)
+
+1. 从 CCF 数据库获取会议/期刊列表
+2. 构建 DBLP URL
+3. 爬取论文列表页面
+4. 解析论文信息（标题、作者、链接等）
+
+### CCF 排名 (ccf)
+
+1. 爬取 CCF 官网各领域排名页面
+2. 解析会议/期刊信息
+3. 存储到 ccf_venues 表
+
+### 论文摘要 (abstract)
+
+#### 获取优先级
+
+```
+1. 有 DOI → Semantic Scholar
+2. 无 DOI → 标题搜索 OpenAlex → Semantic Scholar
+3. 都失败 → 原始网站提取 (专用提取器 → LLM 兜底)
+```
+
+#### 详细流程
+
+```
+① 提取 DOI
+   │
+   ├─ 有 DOI
+   │    └─→ Semantic Scholar (DOI 查询)
+   │         ├─ 成功 → 返回
+   │         └─ 失败 → 步骤 ③
+   │
+   └─ 无 DOI
+        └─→ OpenAlex (标题搜索)
+             ├─ 成功 → 返回
+             └─ 失败 → Semantic Scholar (标题搜索)
+                          ├─ 成功 → 返回
+                          └─ 失败 → 步骤 ③
+
+③ 原始网站提取
+   │
+   ├─ 专用提取器 (usenix.org 等)
+   │    ├─ 成功 → 返回
+   │    └─ 失败 → LLM 提取器
+   │
+   └─ LLM 提取器 (兜底)
+        ├─ 成功 → 返回
+        └─ 失败 → 返回 None
+```
+
+#### 原始网站提取策略
+
+```python
+# 1. 根据 URL 匹配专用提取器
+extractor = get_extractor(origin_url)  # 如 usenix.org → UsenixExtractor
+
+# 2. 使用提取器从 HTML 提取
+if extractor:
+    abstract = extractor.extract(html)
+
+# 3. 提取失败则使用 LLM
+if not abstract:
+    abstract = await llm_extractor.extract_async(url)
+```
+
+#### 添加新的网站提取器
+
+在 `origin_extractors/__init__.py` 添加映射：
+
+```python
+EXTRACTORS = {
+    "usenix.org": UsenixExtractor,
+    "acm.org": AcmExtractor,    # 新增
+    "ieee.org": IeeeExtractor, # 新增
+}
+```
+
+然后创建对应的提取器类，继承 `BaseExtractor` 并实现 `extract` 方法。
+
+#### API 提供者扩展
+
+在 `api_providers/__init__.py` 的 `API_PROVIDERS` 列表中添加新的客户端类。
+
+## 运行
+
+```bash
+# DBLP 论文爬虫
+python -m crawler.dblp.cli CCS 2024
+python -m crawler.dblp.cli USS 2025 --preview-only --verbose
+
+# CCF 排名爬虫
+python -m crawler.ccf.cli --preview-only
+
+# 摘要获取
+python -m crawler.abstract.cli --db papers.db --limit 1000
+python -m crawler.abstract.cli --db papers.db --refresh
+```
+
+## 设计原则
+
+1. **各模块职责分离**：只负责爬取/解析，不关心数据库
+2. **统一数据库操作**：shared/database.py 管理所有表操作
+3. **可扩展的提取器**：按需添加新的网站提取器或 API 提供者
+4. **摘要获取兜底**：专用提取器失败后使用 LLM

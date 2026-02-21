@@ -1,7 +1,7 @@
 """
 论文摘要获取器
 
-组合调度 Crossref、Semantic Scholar 和网页爬取获取论文摘要。
+调度多种方式获取论文摘要：arXiv API、原始网站提取（专用提取器 / LLM）。
 """
 import logging
 import asyncio
@@ -19,8 +19,8 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
 
-from .doi_extractor import extract_doi_from_origin, extract_arxiv_id
-from .api_providers import get_crossref_client, get_semantic_scholar_client, get_openalex_client
+from .doi_extractor import extract_doi_from_origin
+from .api_providers import get_semantic_scholar_client, get_openalex_client
 from .origin_extractors import get_extractor, get_llm_extractor
 
 logger = logging.getLogger(__name__)
@@ -30,9 +30,8 @@ class AbstractFetcher:
     """论文摘要获取器"""
 
     def __init__(self):
-        self.crossref = get_crossref_client()
-        self.openalex = get_openalex_client()
         self.semantic_scholar = get_semantic_scholar_client()
+        self.openalex = get_openalex_client()
         self._crawler = None
 
     async def _get_crawler(self) -> AsyncWebCrawler:
@@ -57,7 +56,10 @@ class AbstractFetcher:
         """
         获取论文摘要
 
-        优先级: Crossref -> OpenAlex -> Semantic Scholar -> 爬取原始网站
+        优先级:
+        1. 有 DOI -> Semantic Scholar
+        2. 无 DOI -> 标题搜索 OpenAlex -> Semantic Scholar
+        3. 都失败 -> 原始网站提取 (专用提取器 / LLM)
 
         Args:
             title: 论文标题
@@ -69,59 +71,47 @@ class AbstractFetcher:
         """
         # 1. 提取 DOI
         doi = extract_doi_from_origin(origin, href)
-
-        # 1.5 尝试提取 arXiv ID
-        arxiv_id = extract_arxiv_id(origin) or extract_arxiv_id(href)
-        if arxiv_id:
-            # 尝试使用 arXiv ID 获取摘要
-            abstract = await self._fetch_semantic_scholar_arxiv(arxiv_id)
-            if abstract:
-                return abstract, "semantic_scholar"
-
-        # 2. 有 DOI 时尝试 Crossref
         if doi:
-            abstract = await self._fetch_crossref(doi)
+            logger.info(f"  → 尝试 Semantic Scholar (DOI: {doi})")
+            abstract = await self._fetch_semantic_scholar(doi)
             if abstract:
-                return abstract, "crossref"
+                logger.info(f"  ✓ 成功 (来源: semantic_scholar)")
+                return abstract, "semantic_scholar"
+            logger.info(f"  ✗ 失败")
 
-            # TODO: 临时注释掉 OpenAlex 和 Semantic Scholar，测试 LLM 提取
-            # # 3. 尝试 OpenAlex (DOI)
-            # abstract = await self._fetch_openalex(doi)
-            # if abstract:
-            #     return abstract, "openalex"
-            #
-            # # 4. 尝试 Semantic Scholar (DOI)
-            # abstract = await self._fetch_semantic_scholar(doi)
-            # if abstract:
-            #     return abstract, "semantic_scholar"
-        else:
-            # TODO: 临时注释掉 OpenAlex 和 Semantic Scholar，测试 LLM 提取
-            # 没有 DOI 时，先尝试 OpenAlex 标题搜索
-            # abstract = await self._search_openalex_by_title(title)
-            # if abstract:
-            #     return abstract, "openalex"
-            #
-            # # 没有 DOI 时，通过标题搜索 Semantic Scholar
-            # abstract = await self._search_semantic_scholar_by_title(title)
-            # if abstract:
-            #     return abstract, "semantic_scholar"
-            # 如果标题搜索失败（可能是 429），也尝试爬取原网页
-            pass
+        # 2. 无 DOI 时，尝试标题搜索
+        if not doi:
+            logger.info(f"  → 尝试 OpenAlex (标题搜索)")
+            abstract = await self._search_openalex_by_title(title)
+            if abstract:
+                logger.info(f"  ✓ 成功 (来源: openalex)")
+                return abstract, "openalex"
+            logger.info(f"  ✗ 失败")
 
-        # 5. 爬取原始网站（仅当是有效的原始网站链接，不是 DBLP 列表页）
+            logger.info(f"  → 尝试 Semantic Scholar (标题搜索)")
+            abstract = await self._search_semantic_scholar_by_title(title)
+            if abstract:
+                logger.info(f"  ✓ 成功 (来源: semantic_scholar)")
+                return abstract, "semantic_scholar"
+            logger.info(f"  ✗ 失败")
+
+        # 3. 爬取原始网站
         if origin and 'dblp' not in origin.lower():
+            logger.info(f"  → 尝试原始网站提取")
             abstract, source = await self._crawl_origin(origin, title)
             if abstract:
+                logger.info(f"  ✓ 成功 (来源: {source})")
                 return abstract, source
 
+        logger.info(f"  ✗ 所有方式均失败")
         return None, None
 
-    async def _fetch_crossref(self, doi: str) -> Optional[str]:
-        """从 Crossref 获取摘要"""
+    async def _fetch_semantic_scholar(self, doi: str) -> Optional[str]:
+        """从 Semantic Scholar 获取摘要"""
         try:
-            return self.crossref.get_abstract(doi)
+            return self.semantic_scholar.get_abstract(doi)
         except Exception as e:
-            logger.debug(f"Crossref error for {doi}: {e}")
+            logger.debug(f"Semantic Scholar error for {doi}: {e}")
             return None
 
     async def _fetch_openalex(self, doi: str) -> Optional[str]:
@@ -138,22 +128,6 @@ class AbstractFetcher:
             return self.openalex.search_by_title(title)
         except Exception as e:
             logger.debug(f"OpenAlex search error for '{title}': {e}")
-            return None
-
-    async def _fetch_semantic_scholar(self, doi: str) -> Optional[str]:
-        """从 Semantic Scholar 获取摘要"""
-        try:
-            return self.semantic_scholar.get_abstract(doi)
-        except Exception as e:
-            logger.debug(f"Semantic Scholar error for {doi}: {e}")
-            return None
-
-    async def _fetch_semantic_scholar_arxiv(self, arxiv_id: str) -> Optional[str]:
-        """从 Semantic Scholar 获取 arXiv 论文摘要"""
-        try:
-            return self.semantic_scholar.get_abstract_arxiv(arxiv_id)
-        except Exception as e:
-            logger.debug(f"Semantic Scholar error for arXiv {arxiv_id}: {e}")
             return None
 
     async def _search_semantic_scholar_by_title(self, title: str) -> Optional[str]:
