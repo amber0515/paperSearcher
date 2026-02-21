@@ -32,6 +32,7 @@ crawler/
     └── origin_extractors/ # 原始网站提取器
         ├── base.py
         ├── usenix.py
+        ├── ndss.py
         └── llm.py
 ```
 
@@ -55,9 +56,11 @@ crawler/
 #### 获取优先级
 
 ```
-1. 有 DOI → Semantic Scholar
-2. 无 DOI → 标题搜索 OpenAlex → Semantic Scholar
-3. 都失败 → 原始网站提取 (专用提取器 → LLM 兜底)
+1. DOI → Semantic Scholar
+2. DOI 失败 → OpenAlex (DOI)
+3. 标题搜索 → OpenAlex
+4. 标题搜索 → Semantic Scholar
+5. 都失败 → 原始网站提取 (专用提取器 → LLM 兜底)
 ```
 
 #### 详细流程
@@ -68,18 +71,26 @@ crawler/
    ├─ 有 DOI
    │    └─→ Semantic Scholar (DOI 查询)
    │         ├─ 成功 → 返回
-   │         └─ 失败 → 步骤 ③
+   │         └─ 失败 → 步骤 ②
    │
    └─ 无 DOI
-        └─→ OpenAlex (标题搜索)
-             ├─ 成功 → 返回
-             └─ 失败 → Semantic Scholar (标题搜索)
-                          ├─ 成功 → 返回
-                          └─ 失败 → 步骤 ③
+        └─→ 步骤 ②
 
-③ 原始网站提取
+② OpenAlex (DOI)
+   ├─ 成功 → 返回
+   └─ 失败 → 步骤 ③
+
+③ OpenAlex (标题搜索)
+   ├─ 成功 → 返回
+   └─ 失败 → 步骤 ④
+
+④ Semantic Scholar (标题搜索)
+   ├─ 成功 → 返回
+   └─ 失败 → 步骤 ⑤
+
+⑤ 原始网站提取
    │
-   ├─ 专用提取器 (usenix.org 等)
+   ├─ 专用提取器 (usenix.org, ndss-symposium.org 等)
    │    ├─ 成功 → 返回
    │    └─ 失败 → LLM 提取器
    │
@@ -87,39 +98,6 @@ crawler/
         ├─ 成功 → 返回
         └─ 失败 → 返回 None
 ```
-
-#### 原始网站提取策略
-
-```python
-# 1. 根据 URL 匹配专用提取器
-extractor = get_extractor(origin_url)  # 如 usenix.org → UsenixExtractor
-
-# 2. 使用提取器从 HTML 提取
-if extractor:
-    abstract = extractor.extract(html)
-
-# 3. 提取失败则使用 LLM
-if not abstract:
-    abstract = await llm_extractor.extract_async(url)
-```
-
-#### 添加新的网站提取器
-
-在 `origin_extractors/__init__.py` 添加映射：
-
-```python
-EXTRACTORS = {
-    "usenix.org": UsenixExtractor,
-    "acm.org": AcmExtractor,    # 新增
-    "ieee.org": IeeeExtractor, # 新增
-}
-```
-
-然后创建对应的提取器类，继承 `BaseExtractor` 并实现 `extract` 方法。
-
-#### API 提供者扩展
-
-在 `api_providers/__init__.py` 的 `API_PROVIDERS` 列表中添加新的客户端类。
 
 ## 运行
 
@@ -134,8 +112,7 @@ python -m crawler.dblp.cli USS 2025 --preview-only --verbose
 python -m crawler.ccf.cli --preview-only
 
 # 摘要获取
-python -m crawler.abstract.cli --db papers.db --limit 1000
-python -m crawler.abstract.cli --db papers.db --refresh
+python -m crawler.abstract.cli --db papers_test.db
 ```
 
 ## 设计原则

@@ -110,7 +110,7 @@ class SemanticScholarClient(BaseAPIClient):
                 return None
 
             if response.status_code == 429:
-                logger.debug("Semantic Scholar search rate limited, skipping...")
+                logger.warning("Semantic Scholar 搜索被限流")
                 return None
 
             response.raise_for_status()
@@ -130,7 +130,7 @@ class SemanticScholarClient(BaseAPIClient):
             return None
 
         except requests.RequestException as e:
-            logger.debug(f"Semantic Scholar search error for '{title}': {e}")
+            logger.warning(f"Semantic Scholar 网络错误: {e}")
             return None
         except (KeyError, ValueError) as e:
             logger.debug(f"Semantic Scholar search parse error: {e}")

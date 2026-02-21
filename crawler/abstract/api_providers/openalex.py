@@ -114,7 +114,7 @@ class OpenAlexClient(BaseAPIClient):
             return None
 
         except requests.RequestException as e:
-            logger.debug(f"OpenAlex search error for '{title}': {e}")
+            logger.warning(f"OpenAlex 网络错误: {e}")
             return None
         except (KeyError, ValueError) as e:
             logger.debug(f"OpenAlex search parse error: {e}")
