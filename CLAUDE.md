@@ -19,7 +19,17 @@ paperSearcher/
 │   │   ├── database.py    # 数据库操作
 │   │   └── models.py      # 数据模型
 │   │
-│   └── ccf/               # CCF 排名爬虫
+│   ├── abstract/          # 论文摘要获取
+│   │   ├── cli.py         # CLI 入口
+│   │   ├── fetcher.py    # 摘要获取器
+│   │   ├── api_clients.py # API 客户端
+│   │   ├── doi_extractor.py # DOI 提取
+│   │   └── database.py   # 复用共享数据库函数
+│   │
+│   ├── shared/            # 共享模块
+│   │   └── database.py   # 通用数据库操作
+│   │
+│   └── ccf/              # CCF 排名爬虫
 │
 ├── papers.db              # 生产数据库
 └── papers_test.db         # 测试数据库
@@ -35,6 +45,10 @@ ENV=prod python website.py          # 生产环境
 # DBLP 爬虫
 python -m crawler.dblp.cli CCS 2024           # 爬取会议论文
 python -m crawler.dblp.cli USS 2025 --preview-only --verbose
+
+# 摘要获取
+python -m crawler.abstract.cli --db papers.db --limit 1000
+python -m crawler.abstract.cli --db papers.db --refresh
 
 # CCF 爬虫
 python -m crawler.ccf.cli --preview-only

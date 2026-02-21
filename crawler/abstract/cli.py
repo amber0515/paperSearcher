@@ -2,9 +2,9 @@
 批量获取论文摘要 CLI
 
 用法:
-    python -m crawler.dblp.batch_cli --db papers.db --limit 1000
-    python -m crawler.dblp.batch_cli --db papers.db --refresh
-    python -m crawler.dblp.batch_cli --db papers.db --conf CCS --year 2024
+    python -m crawler.abstract.cli --db papers.db --limit 1000
+    python -m crawler.abstract.cli --db papers.db --refresh
+    python -m crawler.abstract.cli --db papers.db --conf CCS --year 2024
 """
 import argparse
 import asyncio
@@ -12,12 +12,12 @@ import logging
 import sys
 import time
 
-from crawler.dblp.database import (
+from crawler.shared.database import (
     get_papers_without_abstract,
     get_papers_for_refresh,
     update_paper_abstract,
 )
-from crawler.dblp.abstract_fetcher import AbstractFetcher
+from crawler.abstract.fetcher import AbstractFetcher
 
 
 logging.basicConfig(
@@ -134,9 +134,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-    python -m crawler.dblp.batch_cli --db papers.db --limit 100
-    python -m crawler.dblp.batch_cli --db papers.db --conf CCS --year 2024
-    python -m crawler.dblp.batch_cli --db papers.db --refresh --limit 5000
+    python -m crawler.abstract.cli --db papers.db --limit 100
+    python -m crawler.abstract.cli --db papers.db --conf CCS --year 2024
+    python -m crawler.abstract.cli --db papers.db --refresh --limit 5000
         """
     )
 
