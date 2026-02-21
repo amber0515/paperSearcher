@@ -111,7 +111,7 @@ async def fetch_abstracts(
                         # 更新数据库
                         if update_paper_abstract(db_path, paper_id, abstract, source):
                             success += 1
-                            logger.info(f"  ✓ 成功 (来源: {source})")
+                            # fetcher.py 已经打印了成功日志，这里不再重复打印
                             if verbose:
                                 print(f"  摘要: {abstract[:200]}...")
                         else:

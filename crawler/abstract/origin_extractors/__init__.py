@@ -6,6 +6,7 @@ from typing import Optional, Type
 
 from .base import BaseExtractor
 from .usenix import UsenixExtractor
+from .ndss import NDSSExtractor
 from .llm import LLMExtractor, get_llm_extractor, close_llm_extractor
 
 
@@ -13,6 +14,7 @@ from .llm import LLMExtractor, get_llm_extractor, close_llm_extractor
 EXTRACTORS: dict[str, Type[BaseExtractor]] = {
     "usenix.org": UsenixExtractor,
     "usenixsecurity.org": UsenixExtractor,
+    "ndss-symposium.org": NDSSExtractor,
     # 未来添加:
     # "acm.org": AcmExtractor,
     # "ieee.org": IeeeExtractor,
@@ -41,6 +43,7 @@ def get_extractor(origin_url: str) -> Optional[BaseExtractor]:
 __all__ = [
     "BaseExtractor",
     "UsenixExtractor",
+    "NDSSExtractor",
     "LLMExtractor",
     "get_extractor",
     "get_llm_extractor",
