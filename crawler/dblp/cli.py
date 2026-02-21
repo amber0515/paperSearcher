@@ -22,9 +22,13 @@ from crawler.dblp import (
     build_year_url_all,
     fetch_all_successful_urls,
     extract_papers_from_html,
+    Stats,
+)
+
+# 导入数据库操作
+from crawler.shared.database import (
     get_conferences_from_ccf,
     save_papers_to_db,
-    Stats,
 )
 
 # 默认测试数据库路径

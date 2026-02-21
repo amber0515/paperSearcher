@@ -15,9 +15,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from crawler.ccf.crawler import fetch_all_ccf_pages, CCF_DOMAIN_CODES
+from crawler.ccf.fetcher import fetch_all_ccf_pages, CCF_DOMAIN_CODES
 from crawler.ccf.parser import parse_all_ccf_pages
-from crawler.ccf.database import save_ccf_venues, get_statistics
+from crawler.shared.database import save_ccf_venues, get_ccf_statistics
 
 
 def print_venues_preview(venues: list):
@@ -162,7 +162,7 @@ def main():
         print(f"  错误: {stats['errors']}")
 
         # 6. 显示统计
-        db_stats = get_statistics(db_path)
+        db_stats = get_ccf_statistics(db_path)
         print(f"\n数据库统计:")
         print(f"  总数: {db_stats['total']}")
         print(f"  按等级: {db_stats['by_rank']}")

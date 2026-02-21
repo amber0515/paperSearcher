@@ -1,9 +1,9 @@
 """
-数据模型定义
+通用数据模型定义
 
-定义 DBLP 爬虫使用的数据结构。
+定义论文、场馆等数据结构。
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -20,7 +20,6 @@ class Paper:
     abstract: Optional[str] = None
 
     def to_dict(self) -> dict:
-        """转换为字典"""
         return {
             'title': self.title,
             'year': self.year,
@@ -33,7 +32,6 @@ class Paper:
         }
 
     def to_db_tuple(self) -> tuple:
-        """转换为数据库插入所需的元组"""
         return (
             self.conference,
             self.year,
@@ -47,16 +45,15 @@ class Paper:
 
 @dataclass
 class Venue:
-    """会议/期刊数据模型"""
+    """场馆数据模型（CCF 会议/期刊）"""
     abbreviation: str
     full_name: str
     ccf_rank: str
     venue_type: str
     domain: str
-    dblp_url: str
+    dblp_url: str = ""
 
     def to_dict(self) -> dict:
-        """转换为字典"""
         return {
             'abbreviation': self.abbreviation,
             'full_name': self.full_name,
@@ -75,14 +72,12 @@ class Stats:
     errors: int = 0
 
     def __iadd__(self, other: 'Stats') -> 'Stats':
-        """累加统计信息"""
         self.added += other.added
         self.skipped += other.skipped
         self.errors += other.errors
         return self
 
     def to_dict(self) -> dict:
-        """转换为字典"""
         return {
             'added': self.added,
             'skipped': self.skipped,

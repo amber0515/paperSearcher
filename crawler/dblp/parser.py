@@ -8,7 +8,7 @@ import re
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup, Tag
 from abc import ABC, abstractmethod
-from .models import Paper
+from crawler.shared.models import Paper
 
 
 class EntryParser(ABC):
