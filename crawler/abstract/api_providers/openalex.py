@@ -1,17 +1,14 @@
-"""
-OpenAlex API 客户端
-
-提供通过 DOI 或标题搜索获取论文摘要的功能。
-"""
+"""OpenAlex API 提供者"""
 import time
 import logging
 import requests
 from typing import Optional
+from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
 
 
-class OpenAlexClient:
+class OpenAlexClient(BaseAPIClient):
     """OpenAlex API 客户端
 
     优势:
@@ -22,9 +19,12 @@ class OpenAlexClient:
 
     BASE_URL = "https://api.openalex.org/works"
 
-    # 限制: 10 次/秒
     RATE_LIMIT = 10
-    RATE_WINDOW = 1.0  # 1 秒
+    RATE_WINDOW = 1.0
+
+    @property
+    def name(self) -> str:
+        return "openalex"
 
     def __init__(self):
         self.session = requests.Session()
@@ -34,19 +34,9 @@ class OpenAlexClient:
         self._request_times = []
 
     def get_abstract(self, doi: str) -> Optional[str]:
-        """
-        通过 DOI 获取论文摘要
-
-        Args:
-            doi: DOI 字符串 (如 10.1145/3580305.3599234)
-
-        Returns:
-            摘要文本或 None
-        """
         self._wait_for_rate_limit()
 
         try:
-            # OpenAlex 使用 DOI 作为过滤条件
             url = self.BASE_URL
             params = {
                 'filter': f'doi:{doi}',
@@ -69,7 +59,6 @@ class OpenAlexClient:
 
             abstract = results[0].get('abstract_inverted_index')
             if abstract:
-                # OpenAlex 的 abstract 是倒排索引格式，需要重建
                 return self._reconstruct_abstract(abstract)
 
             return None
@@ -82,23 +71,13 @@ class OpenAlexClient:
             return None
 
     def search_by_title(self, title: str) -> Optional[str]:
-        """
-        通过标题搜索论文并获取摘要
-
-        Args:
-            title: 论文标题
-
-        Returns:
-            摘要文本或 None
-        """
         self._wait_for_rate_limit()
 
         try:
-            # 使用搜索 API
             url = self.BASE_URL
             params = {
                 'search': title,
-                'per-page': 5  # 获取前 5 个结果以便更好地匹配
+                'per-page': 5
             }
 
             response = self.session.get(url, params=params, timeout=15)
@@ -115,16 +94,13 @@ class OpenAlexClient:
             if not results:
                 return None
 
-            # 尝试找到最佳匹配
             for paper in results:
                 paper_title = paper.get('title', '').lower()
                 title_lower = title.lower()
 
-                # 检查标题是否足够相似（简单匹配：包含主要单词）
                 title_words = set(title_lower.split())
                 paper_words = set(paper_title.split())
 
-                # 如果匹配度超过 60%，则认为匹配成功
                 if title_words and paper_words:
                     overlap = len(title_words & paper_words) / len(title_words)
                     if overlap >= 0.6:
@@ -141,17 +117,17 @@ class OpenAlexClient:
             logger.debug(f"OpenAlex search parse error: {e}")
             return None
 
-    def _wait_for_rate_limit(self):
-        """等待直到可以进行下一个请求"""
-        now = time.time()
+    def get_abstract_arxiv(self, arxiv_id: str) -> Optional[str]:
+        """OpenAlex 不直接支持 arXiv ID 搜索"""
+        return None
 
-        # 清理过期的请求记录
+    def _wait_for_rate_limit(self):
+        now = time.time()
         self._request_times = [
             t for t in self._request_times
             if now - t < self.RATE_WINDOW
         ]
 
-        # 如果已达到限制，等待
         if len(self._request_times) >= self.RATE_LIMIT:
             oldest = self._request_times[0]
             wait_time = self.RATE_WINDOW - (now - oldest)
@@ -159,27 +135,14 @@ class OpenAlexClient:
                 time.sleep(wait_time)
 
     def _reconstruct_abstract(self, abstract_inverted_index: dict) -> str:
-        """
-        从倒排索引重建摘要文本
-
-        OpenAlex 的 abstract 是倒排索引格式:
-        {
-            "word1": [position1, position2, ...],
-            "word2": [position1, ...],
-            ...
-        }
-        """
         if not abstract_inverted_index:
             return ""
 
-        # 构建位置到词的映射
         position_to_word = {}
         for word, positions in abstract_inverted_index.items():
-            # positions 是一个整数列表，如 [0, 18]
             for pos in positions:
                 position_to_word[pos] = word
 
-        # 按位置顺序重建文本
         if not position_to_word:
             return ""
 
@@ -190,15 +153,3 @@ class OpenAlexClient:
                 words.append(position_to_word[pos])
 
         return ' '.join(words)
-
-
-# 默认客户端实例
-_openalex_client: Optional[OpenAlexClient] = None
-
-
-def get_openalex_client() -> OpenAlexClient:
-    """获取 OpenAlex 客户端单例"""
-    global _openalex_client
-    if _openalex_client is None:
-        _openalex_client = OpenAlexClient()
-    return _openalex_client

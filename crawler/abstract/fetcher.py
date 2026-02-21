@@ -8,8 +8,7 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Optional
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-from crawl4ai.extraction_strategy import LLMExtractionStrategy, create_llm_config
+from crawl4ai import AsyncWebCrawler
 
 # 精简日志输出
 for logger_name in ["crawl4ai", "litellm", "LiteLLM", "httpx", "urllib3", "asyncio"]:
@@ -21,7 +20,8 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
 
 from .doi_extractor import extract_doi_from_origin, extract_arxiv_id
-from .api_clients import get_crossref_client, get_semantic_scholar_client, get_openalex_client
+from .api_providers import get_crossref_client, get_semantic_scholar_client, get_openalex_client
+from .origin_extractors import get_extractor, get_llm_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -169,163 +169,40 @@ class AbstractFetcher:
         从原始网站爬取摘要
 
         策略：
-        1. 先尝试正则表达式匹配（固定处理流程）
-        2. 正则匹配失败则使用 LLM 智能提取
+        1. 查找匹配的专用提取器
+        2. 有提取器则使用提取器提取
+        3. 没有提取器或提取失败则使用 LLM 提取器
 
         Returns:
-            (abstract, source) - source 为 "origin_fixed" 或 "origin_llm"
+            (abstract, source) - source 为 "origin_{name}" 或 "origin_llm"
         """
         # 过滤非 http URL
         if not origin.startswith('http'):
             return None, "origin"
 
-        # 1. 先尝试爬取页面并用正则匹配
+        # 1. 查找匹配的提取器
+        extractor = get_extractor(origin)
+
+        # 2. 爬取页面
         try:
             crawler = await self._get_crawler()
             result = await crawler.arun(url=origin)
 
             if result.success and result.html:
-                # 尝试正则提取
-                abstract = self._extract_abstract_from_html(result.html)
-                if abstract:
-                    print(f"OK: origin_fixed extracted ({len(abstract)} chars)")
-                    return abstract, "origin_fixed"
+                # 2.1 有专用提取器，使用提取器提取
+                if extractor:
+                    abstract = extractor.extract(result.html)
+                    if abstract:
+                        name = extractor.__class__.__name__.replace("Extractor", "").lower()
+                        print(f"OK: origin_{name} extracted ({len(abstract)} chars)")
+                        return abstract, f"origin_{name}"
         except Exception as e:
-            print(f"WARN: regex extraction failed: {e}")
+            print(f"WARN: extraction failed: {e}")
 
-        # 2. 正则匹配失败，使用 LLM 提取
-        return await self._crawl_origin_llm(origin)
+        # 3. 所有提取失败，使用 LLM 提取器
+        llm_extractor = get_llm_extractor()
+        return await llm_extractor.extract_async(origin)
 
-    async def _crawl_origin_llm(self, origin: str) -> tuple[Optional[str], str]:
-        """使用 LLM 从原始网站提取摘要"""
-        # LLM 配置（支持自定义 provider 和 base_url）
-        # 环境变量:
-        #   - LLM_PROVIDER: 提供商 (如 openai/gpt-4o-mini, anthropic/claude-3-sonnet, 等)
-        #   - LLM_API_KEY: API 密钥
-        #   - LLM_BASE_URL: 自定义 API 端点 (可选)
-        llm_config = create_llm_config(
-            provider=os.getenv("LLM_PROVIDER"),
-            api_token=os.getenv("LLM_API_KEY"),
-            base_url=os.getenv("LLM_BASE_URL")
-        )
-
-        llm_strategy = LLMExtractionStrategy(
-            llm_config=llm_config,
-            instruction="Extract the research paper abstract from this webpage. Return only the abstract text, nothing else. If there is no abstract, return empty string.",
-            input_format="markdown",
-            verbose=False
-        )
-
-        config = CrawlerRunConfig(
-            extraction_strategy=llm_strategy,
-        )
-
-        crawler = await self._get_crawler()
-        result = await crawler.arun(url=origin, config=config)
-
-        if not result.success:
-            error_msg = f"Failed to crawl {origin}: {result.error_message}"
-            print(f"ERROR: {error_msg}")
-            raise RuntimeError(error_msg)
-
-        # 尝试从 LLM 提取结果获取摘要
-        if result.extracted_content:
-            # LLM 提取结果可能是 JSON 或纯文本
-            try:
-                import json
-                data = json.loads(result.extracted_content)
-
-                # 检查 JSON 中是否有 error 字段且为 true
-                has_error = False
-                if isinstance(data, list) and data:
-                    has_error = data[0].get('error', False) is True
-                elif isinstance(data, dict):
-                    has_error = data.get('error', False) is True
-
-                if has_error:
-                    error_msg = f"LLM extraction error for {origin}: {result.extracted_content}"
-                    print(f"ERROR: {error_msg}")
-                    raise RuntimeError(error_msg)
-
-                # 提取摘要内容
-                abstract = None
-                if isinstance(data, list) and data:
-                    content = data[0].get('content')
-                    # content 可能是列表或字符串
-                    if isinstance(content, list):
-                        abstract = ' '.join(str(c) for c in content)
-                    else:
-                        abstract = content
-                    abstract = abstract or data[0].get('abstract', '')
-                elif isinstance(data, dict):
-                    content = data.get('content')
-                    if isinstance(content, list):
-                        abstract = ' '.join(str(c) for c in content)
-                    else:
-                        abstract = content
-                    abstract = abstract or data.get('abstract', '')
-                else:
-                    abstract = str(data) if data else ''
-
-                if abstract and len(abstract) > 20:
-                    print(f"OK: origin_llm extracted ({len(abstract)} chars)")
-                    return abstract, "origin_llm"
-
-            except (json.JSONDecodeError, AttributeError):
-                # 直接返回文本内容
-                if result.extracted_content and len(result.extracted_content) > 20:
-                    return result.extracted_content, "origin_llm"
-
-        return None, "origin_llm"
-
-    def _extract_abstract_from_html(self, html: str) -> Optional[str]:
-        """从 HTML 中提取摘要"""
-        import re
-
-        html_lower = html.lower()
-
-        # 各种网站的摘要模式
-        patterns = [
-            # USENIX: <div class="field field-name-field-paper-description">
-            (r'<div[^>]*class=["\'][^"\']*field-paper-description[^"\']*["\'][^>]*>.*?<p[^>]*>(.*?)</p>', re.DOTALL),
-
-            # generic abstract class
-            (r'<div[^>]*class=["\'][^"\']*abstract[^"\']*["\'][^>]*>(.*?)</div>', re.DOTALL),
-
-            # section with abstract
-            (r'<section[^>]*class=["\'][^"\']*abstract[^"\']*["\'][^>]*>(.*?)</section>', re.DOTALL),
-
-            # meta tag
-            (r'<meta[^>]*name=["\']abstract["\'][^>]*content=["\']([^"\']+)["\']', re.IGNORECASE),
-
-            # abstract tag
-            (r'<abstract[^>]*>(.*?)</abstract>', re.DOTALL),
-
-            # data-abstract attribute
-            (r'data-abstract=["\']([^"\']+)["\']', re.IGNORECASE),
-
-            # schema.org abstract
-            (r'"abstract":\s*"([^"]+)"', re.IGNORECASE),
-        ]
-
-        for pattern, flags in patterns:
-            match = re.search(pattern, html, flags | re.IGNORECASE)
-            if match:
-                abstract = match.group(1)
-                # 清理 HTML 标签
-                abstract = re.sub(r'<[^>]+>', '', abstract)
-                # 清理多余空白
-                abstract = ' '.join(abstract.split())
-                # 移除 HTML 实体
-                abstract = abstract.replace('&nbsp;', ' ')
-                abstract = abstract.replace('&amp;', '&')
-                abstract = abstract.replace('&lt;', '<')
-                abstract = abstract.replace('&gt;', '>')
-                abstract = abstract.replace('&quot;', '"')
-                if abstract and len(abstract) > 20:  # 确保不是太短的错误匹配
-                    return abstract
-
-        return None
 
 
 def fetch_abstract_sync(
