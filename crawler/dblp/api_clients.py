@@ -223,6 +223,62 @@ class SemanticScholarClient:
                 logger.info(f"Rate limit reached, waiting {wait_time:.1f}s...")
                 time.sleep(wait_time)
 
+    def search_by_title(self, title: str) -> Optional[str]:
+        """
+        通过标题搜索论文并获取摘要
+
+        Args:
+            title: 论文标题
+
+        Returns:
+            摘要文本或 None
+        """
+        # 搜索 API 需要更长的等待时间
+        time.sleep(2)
+
+        try:
+            # 使用搜索 API
+            url = f"{self.BASE_URL}/search"
+            params = {
+                'query': title,
+                'fields': 'abstract,title',
+                'limit': 1  # 只取第一个结果
+            }
+
+            response = self.session.get(url, params=params, timeout=15)
+
+            if response.status_code == 404:
+                return None
+
+            if response.status_code == 429:
+                # Rate limited, 直接返回 None 让外部爬取原网页
+                logger.debug("Semantic Scholar search rate limited, skipping...")
+                return None
+
+            response.raise_for_status()
+
+            data = response.json()
+            papers = data.get('data', [])
+
+            if not papers:
+                return None
+
+            # 取第一个匹配结果
+            paper = papers[0]
+            abstract = paper.get('abstract')
+
+            if abstract:
+                return ' '.join(abstract.split())
+
+            return None
+
+        except requests.RequestException as e:
+            logger.debug(f"Semantic Scholar search error for '{title}': {e}")
+            return None
+        except (KeyError, ValueError) as e:
+            logger.debug(f"Semantic Scholar search parse error: {e}")
+            return None
+
 
 # 默认客户端实例
 _crossref_client: Optional[CrossrefClient] = None

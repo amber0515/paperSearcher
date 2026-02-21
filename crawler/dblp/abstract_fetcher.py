@@ -65,19 +65,25 @@ class AbstractFetcher:
             if abstract:
                 return abstract, "semantic_scholar"
 
+        # 2. 有 DOI 时尝试 Crossref
         if doi:
-            # 2. 尝试 Crossref
             abstract = await self._fetch_crossref(doi)
             if abstract:
                 return abstract, "crossref"
 
-            # 3. 尝试 Semantic Scholar
+            # 3. 尝试 Semantic Scholar (DOI)
             abstract = await self._fetch_semantic_scholar(doi)
             if abstract:
                 return abstract, "semantic_scholar"
+        else:
+            # 没有 DOI 时，通过标题搜索 Semantic Scholar
+            abstract = await self._search_semantic_scholar_by_title(title)
+            if abstract:
+                return abstract, "semantic_scholar"
+            # 如果标题搜索失败（可能是 429），也尝试爬取原网页
 
-        # 4. 爬取原始网站
-        if origin:
+        # 4. 爬取原始网站（仅当是有效的原始网站链接，不是 DBLP 列表页）
+        if origin and 'dblp' not in origin.lower():
             abstract = await self._crawl_origin(origin, title)
             if abstract:
                 return abstract, "origin"
@@ -108,6 +114,14 @@ class AbstractFetcher:
             logger.debug(f"Semantic Scholar error for arXiv {arxiv_id}: {e}")
             return None
 
+    async def _search_semantic_scholar_by_title(self, title: str) -> Optional[str]:
+        """通过标题在 Semantic Scholar 搜索获取摘要"""
+        try:
+            return self.semantic_scholar.search_by_title(title)
+        except Exception as e:
+            logger.debug(f"Semantic Scholar search error for '{title}': {e}")
+            return None
+
     async def _crawl_origin(self, origin: str, title: str) -> Optional[str]:
         """从原始网站爬取摘要"""
         try:
@@ -122,35 +136,66 @@ class AbstractFetcher:
                 logger.debug(f"Failed to crawl {origin}: {result.error_message}")
                 return None
 
-            # 简单的摘要提取：从页面中查找摘要相关内容
-            html = result.html.lower()
-
-            # 查找常见的摘要标记
-            abstract = None
-
-            # 尝试查找 <abstract> 标签
-            import re
-            abstract_patterns = [
-                r'<abstract[^>]*>(.*?)</abstract>',
-                r'<meta[^>]*name=["\']abstract["\'][^>]*content=["\']([^"\']+)["\']',
-                r'<section[^>]*class=["\'][^"\']*abstract[^"\']*["\'][^>]*>(.*?)</section>',
-            ]
-
-            for pattern in abstract_patterns:
-                match = re.search(pattern, html, re.DOTALL | re.IGNORECASE)
-                if match:
-                    abstract = match.group(1)
-                    # 清理 HTML 标签
-                    abstract = re.sub(r'<[^>]+>', '', abstract)
-                    abstract = ' '.join(abstract.split())
-                    if abstract:
-                        return abstract
+            # 提取摘要
+            html = result.html
+            abstract = self._extract_abstract_from_html(html)
+            if abstract:
+                return abstract
 
             return None
 
         except Exception as e:
             logger.debug(f"Crawl error for {origin}: {e}")
             return None
+
+    def _extract_abstract_from_html(self, html: str) -> Optional[str]:
+        """从 HTML 中提取摘要"""
+        import re
+
+        html_lower = html.lower()
+
+        # 各种网站的摘要模式
+        patterns = [
+            # USENIX: <div class="field field-name-field-paper-description">
+            (r'<div[^>]*class=["\'][^"\']*field-paper-description[^"\']*["\'][^>]*>.*?<p[^>]*>(.*?)</p>', re.DOTALL),
+
+            # generic abstract class
+            (r'<div[^>]*class=["\'][^"\']*abstract[^"\']*["\'][^>]*>(.*?)</div>', re.DOTALL),
+
+            # section with abstract
+            (r'<section[^>]*class=["\'][^"\']*abstract[^"\']*["\'][^>]*>(.*?)</section>', re.DOTALL),
+
+            # meta tag
+            (r'<meta[^>]*name=["\']abstract["\'][^>]*content=["\']([^"\']+)["\']', re.IGNORECASE),
+
+            # abstract tag
+            (r'<abstract[^>]*>(.*?)</abstract>', re.DOTALL),
+
+            # data-abstract attribute
+            (r'data-abstract=["\']([^"\']+)["\']', re.IGNORECASE),
+
+            # schema.org abstract
+            (r'"abstract":\s*"([^"]+)"', re.IGNORECASE),
+        ]
+
+        for pattern, flags in patterns:
+            match = re.search(pattern, html, flags | re.IGNORECASE)
+            if match:
+                abstract = match.group(1)
+                # 清理 HTML 标签
+                abstract = re.sub(r'<[^>]+>', '', abstract)
+                # 清理多余空白
+                abstract = ' '.join(abstract.split())
+                # 移除 HTML 实体
+                abstract = abstract.replace('&nbsp;', ' ')
+                abstract = abstract.replace('&amp;', '&')
+                abstract = abstract.replace('&lt;', '<')
+                abstract = abstract.replace('&gt;', '>')
+                abstract = abstract.replace('&quot;', '"')
+                if abstract and len(abstract) > 20:  # 确保不是太短的错误匹配
+                    return abstract
+
+        return None
 
 
 def fetch_abstract_sync(

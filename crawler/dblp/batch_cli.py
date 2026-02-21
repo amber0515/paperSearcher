@@ -167,8 +167,8 @@ def main():
     parser.add_argument(
         '--delay',
         type=float,
-        default=0.5,
-        help='请求间隔秒数 (默认: 0.5)'
+        default=1.5,
+        help='请求间隔秒数 (默认: 1.5)'
     )
 
     parser.add_argument(
@@ -184,6 +184,14 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # 会议名称别名处理
+    conference_mapping = {
+        'USS': 'USENIX SECURITY',
+        'usenix': 'USENIX SECURITY',
+    }
+    if args.conf and args.conf.upper() in conference_mapping:
+        args.conf = conference_mapping[args.conf.upper()]
 
     # 检查数据库文件
     import os
