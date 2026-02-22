@@ -57,10 +57,9 @@ class AbstractFetcher:
         获取论文摘要
 
         优先级:
-        1. DOI -> Semantic Scholar
-        2. DOI 失败 -> OpenAlex (DOI 或标题搜索)
-        3. 标题搜索 -> OpenAlex -> Semantic Scholar
-        4. 都失败 -> 原始网站提取 (专用提取器 / LLM)
+        1. 有专属提取器 -> 直接使用专属提取器
+        2. 无专属提取器 -> API (Semantic Scholar -> OpenAlex)
+        3. 都失败 -> LLM 提取器 (兜底)
 
         Args:
             title: 论文标题
@@ -70,10 +69,23 @@ class AbstractFetcher:
         Returns:
             (abstract, source) 元组，失败时 (None, None)
         """
-        # 1. 提取 DOI
+        from .origin_extractors import get_extractor
+
+        # 1. 有专属提取器 -> 直接使用专属提取器
+        if origin and 'dblp' not in origin.lower():
+            extractor = get_extractor(origin)
+            if extractor:
+                logger.info(f"  → 尝试专属提取器 ({extractor.__class__.__name__})")
+                abstract, source = await self._crawl_origin(origin, title)
+                if abstract:
+                    logger.info(f"  ✓ 成功 (来源: {source})")
+                    return abstract, source
+                logger.warning(f"  ✗ 专属提取器未找到")
+
+        # 2. 无专属提取器 -> 尝试 API
         doi = extract_doi_from_origin(origin, href)
 
-        # 2. DOI -> Semantic Scholar
+        # 2.1 DOI -> Semantic Scholar
         if doi:
             logger.info(f"  → 尝试 Semantic Scholar (DOI: {doi})")
             abstract = await self._fetch_semantic_scholar(doi)
@@ -82,7 +94,7 @@ class AbstractFetcher:
                 return abstract, "semantic_scholar"
             logger.warning(f"  ✗ Semantic Scholar 未找到")
 
-        # 3. DOI 失败 -> 尝试 OpenAlex (先用 DOI，再用标题)
+        # 2.2 DOI 失败 -> OpenAlex (DOI)
         if doi:
             logger.info(f"  → 尝试 OpenAlex (DOI: {doi})")
             abstract = await self._fetch_openalex(doi)
@@ -91,7 +103,7 @@ class AbstractFetcher:
                 return abstract, "openalex"
             logger.warning(f"  ✗ OpenAlex (DOI) 未找到")
 
-        # 4. 标题搜索 -> OpenAlex
+        # 2.3 标题搜索 -> OpenAlex
         logger.info(f"  → 尝试 OpenAlex (标题)")
         abstract = await self._search_openalex_by_title(title)
         if abstract:
@@ -99,7 +111,7 @@ class AbstractFetcher:
             return abstract, "openalex"
         logger.warning(f"  ✗ OpenAlex 未找到")
 
-        # 5. 标题搜索 -> Semantic Scholar
+        # 2.4 标题搜索 -> Semantic Scholar
         logger.info(f"  → 尝试 Semantic Scholar (标题)")
         abstract = await self._search_semantic_scholar_by_title(title)
         if abstract:
@@ -107,9 +119,9 @@ class AbstractFetcher:
             return abstract, "semantic_scholar"
         logger.warning(f"  ✗ Semantic Scholar 未找到")
 
-        # 6. 爬取原始网站
+        # 3. 都失败 -> LLM 提取器 (兜底)
         if origin and 'dblp' not in origin.lower():
-            logger.info(f"  → 尝试原始网站提取")
+            logger.info(f"  → 尝试 LLM 提取器")
             abstract, source = await self._crawl_origin(origin, title)
             if abstract:
                 logger.info(f"  ✓ 成功 (来源: {source})")

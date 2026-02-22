@@ -56,47 +56,43 @@ crawler/
 #### 获取优先级
 
 ```
-1. DOI → Semantic Scholar
-2. DOI 失败 → OpenAlex (DOI)
-3. 标题搜索 → OpenAlex
-4. 标题搜索 → Semantic Scholar
-5. 都失败 → 原始网站提取 (专用提取器 → LLM 兜底)
+1. 有专属提取器 → 直接使用专属提取器
+2. 无专属提取器 → API (Semantic Scholar → OpenAlex)
+3. 都失败 → LLM 提取器 (兜底)
 ```
 
 #### 详细流程
 
 ```
-① 提取 DOI
+① 有专属提取器? (usenix.org, ndss-symposium.org 等)
    │
-   ├─ 有 DOI
-   │    └─→ Semantic Scholar (DOI 查询)
-   │         ├─ 成功 → 返回
-   │         └─ 失败 → 步骤 ②
-   │
-   └─ 无 DOI
-        └─→ 步骤 ②
-
-② OpenAlex (DOI)
-   ├─ 成功 → 返回
-   └─ 失败 → 步骤 ③
-
-③ OpenAlex (标题搜索)
-   ├─ 成功 → 返回
-   └─ 失败 → 步骤 ④
-
-④ Semantic Scholar (标题搜索)
-   ├─ 成功 → 返回
-   └─ 失败 → 步骤 ⑤
-
-⑤ 原始网站提取
-   │
-   ├─ 专用提取器 (usenix.org, ndss-symposium.org 等)
+   ├─ 是 → 专属提取器提取
    │    ├─ 成功 → 返回
-   │    └─ 失败 → LLM 提取器
+   │    └─ 失败 → 步骤 ②
    │
-   └─ LLM 提取器 (兜底)
+   └─ 否 → 步骤 ②
+
+② API 提取
+   │
+   ├─ Semantic Scholar (DOI)
+   │    ├─ 成功 → 返回
+   │    └─ 失败 → OpenAlex (DOI)
+   │
+   ├─ OpenAlex (DOI)
+   │    ├─ 成功 → 返回
+   │    └─ 失败 → OpenAlex (标题)
+   │
+   ├─ OpenAlex (标题)
+   │    ├─ 成功 → 返回
+   │    └─ 失败 → Semantic Scholar (标题)
+   │
+   └─ Semantic Scholar (标题)
         ├─ 成功 → 返回
-        └─ 失败 → 返回 None
+        └─ 失败 → 步骤 ③
+
+③ LLM 提取器 (兜底)
+   ├─ 成功 → 返回
+   └─ 失败 → 返回 None
 ```
 
 ## 运行
